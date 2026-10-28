@@ -21,6 +21,38 @@ function saveWindowMode(mode: WindowMode) {
   try { localStorage.setItem(MODE_KEY, mode) } catch { /* ignoré */ }
 }
 
+const LOCK_KEY = 'window.sizeLocked'
+
+/** Taille verrouillée (par défaut) : en mode standard, 1500 de large et 950 à 1300 de haut, pas d'agrandissement. */
+export function loadSizeLock(): boolean {
+  try { return localStorage.getItem(LOCK_KEY) !== '0' } catch { return true }
+}
+
+/** Applique les limites du mode standard selon le verrouillage (sans effet en mode portrait). */
+async function applyStandardLimits(locked: boolean) {
+  const win = getCurrentWindow()
+  await win.setResizable(true)
+  if (locked) {
+    await win.unmaximize()
+    await win.setMaximizable(false)
+    await win.setMinSize(new LogicalSize(STANDARD_SIZE.width, STANDARD_SIZE.height))
+    await win.setMaxSize(new LogicalSize(STANDARD_SIZE.width, STANDARD_MAX_HEIGHT))
+  } else {
+    await win.setMinSize(null)
+    await win.setMaxSize(null)
+    await win.setMaximizable(true)
+  }
+}
+
+/** Verrouille ou libère la taille de la fenêtre ; libérée, elle peut être agrandie en plein écran. */
+export async function setSizeLock(locked: boolean): Promise<void> {
+  try { localStorage.setItem(LOCK_KEY, locked ? '1' : '0') } catch { /* ignoré */ }
+  if (loadWindowMode() !== 'standard') return
+  await applyStandardLimits(locked)
+  // En reverrouillant, on revient à la taille standard (la fenêtre pouvait être bien plus grande).
+  if (locked) await placeStandard()
+}
+
 /** Taille des bordures et de la barre de titre (différence entre taille extérieure et intérieure). */
 async function frameSize() {
   const win = getCurrentWindow()
@@ -55,11 +87,12 @@ export async function applyWindowMode(mode: WindowMode): Promise<void> {
   await win.setMaxSize(null)
   if (mode === 'standard') {
     await win.setResizable(true)
+    await win.setMaximizable(true)
+    await win.unmaximize()
     try {
       await placeStandard()
     } finally {
-      await win.setMinSize(new LogicalSize(STANDARD_SIZE.width, STANDARD_SIZE.height))
-      await win.setMaxSize(new LogicalSize(STANDARD_SIZE.width, STANDARD_MAX_HEIGHT))
+      await applyStandardLimits(loadSizeLock())
     }
     return
   }
@@ -67,7 +100,9 @@ export async function applyWindowMode(mode: WindowMode): Promise<void> {
   const monitor = monitors.find((m) => m.size.height > m.size.width) ?? (await currentMonitor())
   if (!monitor) return
   // 1080×1920 pixels réels : l'écran vertical entier (moins la barre de titre et la barre des tâches).
+  await win.unmaximize()
   await placeOn(monitor, PORTRAIT_SIZE)
+  await win.setMaximizable(false)
   await win.setResizable(false)
 }
 

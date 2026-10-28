@@ -51,7 +51,7 @@ export function PlayerSheet({ playerId, onClose }: { playerId: number; onClose: 
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="flex max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl">
+      <DialogContent className="flex max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl">
         {/* En-tête : identité du joueur */}
         <div className="flex items-start gap-5 border-b border-border p-5">
           <div className="relative shrink-0">
@@ -85,26 +85,24 @@ export function PlayerSheet({ playerId, onClose }: { playerId: number; onClose: 
               {[t.player.ageValue(player.age), player.nationality, t.player.footValue(t.foot[player.foot])].filter(Boolean).join(' · ')}
             </DialogDescription>
             <div className="flex flex-wrap gap-1.5">
-              {POSITIONS.filter((p) => (player.positions[p] ?? 0) >= 17).map((p) => (
+              {POSITIONS.filter((p) => player.positions[p] !== undefined).map((p) => (
                 <PositionChip key={p} position={p} familiarity={player.positions[p]} />
               ))}
             </div>
-            {best && (
-              <div className="flex items-center gap-2.5 pt-2">
-                <RatingBadge rating={best.rating} size="lg" />
-                <span className="min-w-0">
-                  <span className="block text-[10px] font-medium tracking-wide text-muted-foreground uppercase">{t.squad.col.bestRole}</span>
-                  <span className="block truncate text-sm text-slate-200">{best.rating.rated ? roleName(best.role) : t.common.none}</span>
-                </span>
-              </div>
-            )}
           </div>
 
-          <PositionPitch positions={player.positions} className="mr-6 w-36 shrink-0" />
+          {best && (
+            <div className="mr-6 flex shrink-0 flex-col items-end gap-1 text-right">
+              <span className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{t.squad.col.bestRole}</span>
+              <RatingBadge rating={best.rating} size="lg" />
+              {best.rating.rated && <span className="max-w-48 truncate text-xs text-slate-300">{roleName(best.role)}</span>}
+            </div>
+          )}
         </div>
 
-        {/* Onglets */}
-        <Tabs defaultValue="attributes" className="min-h-0 flex-1 gap-0">
+        {/* Corps : onglets, et le mini-terrain des postes sur le côté */}
+        <div className="flex min-h-[26rem] flex-1">
+        <Tabs defaultValue="attributes" className="min-h-0 min-w-0 flex-1 gap-0">
           <TabsList variant="line" className="w-full justify-start border-b border-border px-5">
             <TabsTrigger value="attributes" className="flex-none px-3">{t.player.tabAttributes}</TabsTrigger>
             <TabsTrigger value="roles" className="flex-none px-3">{t.player.tabRoles}</TabsTrigger>
@@ -190,6 +188,11 @@ export function PlayerSheet({ playerId, onClose }: { playerId: number; onClose: 
             </div>
           </TabsContent>
         </Tabs>
+          <aside className="flex w-64 shrink-0 flex-col border-l border-border p-4">
+            <SectionTitle>{t.player.positions.replace(' *', '')}</SectionTitle>
+            <PositionPitch positions={player.positions} fill className="min-h-0 flex-1" />
+          </aside>
+        </div>
 
         {/* Pied */}
         <div className="flex items-center justify-between border-t border-border px-5 py-3">

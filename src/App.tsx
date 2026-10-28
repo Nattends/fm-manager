@@ -1,7 +1,7 @@
 import { Loader2Icon, MonitorIcon, SmartphoneIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
-import { applyWindowMode, loadWindowMode, type WindowMode } from '@/lib/windowMode'
+import { applyWindowMode, loadSizeLock, loadWindowMode, setSizeLock, type WindowMode } from '@/lib/windowMode'
 import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useI18n } from './i18n'
@@ -41,6 +41,7 @@ export default function App() {
   // Au démarrage, la fenêtre s'ouvre en taille standard : on rétablit le mode portrait s'il était actif.
   useEffect(() => {
     if (loadWindowMode() === 'portrait') applyWindowMode('portrait').catch((e) => console.warn('Mode portrait', e))
+    else if (!loadSizeLock()) setSizeLock(false).catch((e) => console.warn('Taille de fenêtre libre', e))
   }, [])
 
   const toggleWindowMode = () => {

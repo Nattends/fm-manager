@@ -1,7 +1,7 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { DEFAULT_ROLES } from '../domain/defaultRoles'
 import { familiarityLevel } from '../domain/positions'
-import type { RoleDefinition } from '../domain/types'
+import { I18nContext, type I18n } from './context'
 import { en, type Messages } from './en'
 import { fr } from './fr'
 import type { Lang } from './languages'
@@ -16,19 +16,6 @@ function loadLang(): Lang {
   } catch { /* stockage indisponible */ }
   return 'en'
 }
-
-interface I18n {
-  lang: Lang
-  setLang(lang: Lang): void
-  t: Messages
-  /** Nom affiché d'un rôle : traduit pour un profil par défaut, sinon le nom saisi. */
-  roleName(role: RoleDefinition): string
-  familiarity(value: number | undefined): string
-  money(v: number | null): string
-  date(d: string | null): string
-}
-
-const I18nContext = createContext<I18n | null>(null)
 
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<Lang>(loadLang)
@@ -62,11 +49,4 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   }, [lang])
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>
-}
-
-// oxlint-disable-next-line react/only-export-components
-export function useI18n(): I18n {
-  const ctx = useContext(I18nContext)
-  if (!ctx) throw new Error('useI18n must be used inside <I18nProvider>')
-  return ctx
 }

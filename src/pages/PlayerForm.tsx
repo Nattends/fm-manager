@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { SectionTitle } from '@/components/layout'
@@ -139,7 +138,7 @@ export function PlayerForm({ player, onClose, onSaved }: { player?: Player; onCl
 
               <section>
                 <SectionTitle>{t.player.positions}</SectionTitle>
-                <div className="grid grid-cols-5 gap-1.5 rounded-lg bg-emerald-950/50 p-2.5 ring-1 ring-emerald-900/70">
+                <div className="grid grid-cols-[repeat(5,auto)] justify-items-center gap-x-1 gap-y-2 rounded-lg bg-emerald-950/50 p-3 ring-1 ring-emerald-900/70">
                   {POSITION_GRID.flat().map((pos, i) =>
                     pos === null ? <div key={i} /> : (
                       <PositionCell key={pos} position={pos} value={draft.positions[pos]} onChange={(v) => setPosition(pos, v)} />
@@ -210,36 +209,23 @@ function StarSelect({ value, onChange }: { value: number; onChange: (v: number) 
   )
 }
 
-/** Case du mini-terrain : un clic ouvre le choix de la familiarité au poste. */
+const NOT_PLAYED = 'none'
+
+/** Case du mini-terrain : nom du poste et menu de familiarité directement dans la case. */
 function PositionCell({ position, value, onChange }: { position: Position; value: number | undefined; onChange: (v: number | null) => void }) {
-  const { t, familiarity } = useI18n()
-  const [open, setOpen] = useState(false)
-  const choose = (v: number | null) => {
-    onChange(v)
-    setOpen(false)
-  }
+  const { t } = useI18n()
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button type="button"
-          className={cn('flex h-12 w-[4.5rem] flex-col items-center justify-center rounded-md border text-center transition-colors', familiarityFill(value))}>
-          <span className="text-xs font-bold">{t.positions[position]}</span>
-          <span className="max-w-full truncate px-1 text-[10px] opacity-80">{value ? familiarity(value) : '—'}</span>
-        </button>
-      </PopoverTrigger>
-      <PopoverContent className="w-44 p-1" align="center">
-        {FAMILIARITY_LEVELS.map((l) => (
-          <button key={l} type="button" onClick={() => choose(l)}
-            className={cn('flex w-full rounded px-2 py-1 text-left text-xs hover:bg-secondary', value === l && 'bg-secondary text-slate-100')}>
-            {t.familiarity[l]}
-          </button>
-        ))}
-        <div className="my-1 h-px bg-border" />
-        <button type="button" onClick={() => choose(null)}
-          className="flex w-full rounded px-2 py-1 text-left text-xs text-muted-foreground hover:bg-secondary">
-          {t.tactic.neverPlayed}
-        </button>
-      </PopoverContent>
-    </Popover>
+    <div className="flex flex-col items-center gap-0.5">
+      <span className={cn('text-[11px] font-bold', value ? 'text-slate-100' : 'text-slate-400')}>{t.positions[position]}</span>
+      <Select value={value ? String(value) : NOT_PLAYED} onValueChange={(v) => onChange(v === NOT_PLAYED ? null : Number(v))}>
+        <SelectTrigger size="sm" className={cn('h-7! w-28 px-1.5 text-[11px] shadow-none', familiarityFill(value))}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={NOT_PLAYED} className="text-muted-foreground">—</SelectItem>
+          {FAMILIARITY_LEVELS.map((l) => <SelectItem key={l} value={String(l)}>{t.familiarity[l]}</SelectItem>)}
+        </SelectContent>
+      </Select>
+    </div>
   )
 }

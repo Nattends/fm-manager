@@ -4,7 +4,10 @@ import { DownloadIcon, Loader2Icon, UploadIcon, UsersIcon, UserMinusIcon } from 
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { askConfirm } from '@/lib/confirm'
+import { loadSizeLock, setSizeLock } from '@/lib/windowMode'
 import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { PageHeader, Panel } from '@/components/layout'
 import type { Backup } from '@/data/dataSource'
@@ -18,6 +21,12 @@ export function SettingsPage() {
   const { players, tactics, exportAll, importAll, savePlayer, deletePlayer } = useStore()
   const { t, lang, setLang } = useI18n()
   const [demoBusy, setDemoBusy] = useState(false)
+  const [sizeLocked, setSizeLocked] = useState(loadSizeLock)
+
+  const toggleSizeLock = (locked: boolean) => {
+    setSizeLocked(locked)
+    setSizeLock(locked).catch((e) => toast.error(String(e)))
+  }
   const demoCount = players.filter(isDemoPlayer).length
 
   const errorText = (e: unknown) => (e instanceof Error && e.message === INVALID_BACKUP ? t.settings.invalidBackup : String(e))
@@ -86,6 +95,18 @@ export function SettingsPage() {
                 {LANGUAGES.map((l) => <SelectItem key={l.id} value={l.id}>{l.label}</SelectItem>)}
               </SelectContent>
             </Select>
+          </Panel>
+
+          <Panel title={t.settings.window} className="col-span-2">
+            <div className="flex items-start gap-3">
+              <Switch id="size-lock" checked={sizeLocked} onCheckedChange={toggleSizeLock} className="mt-0.5" />
+              <div className="space-y-1">
+                <Label htmlFor="size-lock" className="text-sm text-slate-200">{t.settings.sizeLock}</Label>
+                <p className="text-[13px] leading-relaxed text-muted-foreground">
+                  {sizeLocked ? t.settings.sizeLockOn : t.settings.sizeLockOff}
+                </p>
+              </div>
+            </div>
           </Panel>
 
           <Panel title={t.settings.dataSource}>
