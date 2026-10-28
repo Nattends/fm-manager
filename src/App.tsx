@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils'
 import { applyWindowMode, loadSizeLock, loadWindowMode, setSizeLock, type WindowMode } from '@/lib/windowMode'
 import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { ClubSwitcher } from '@/components/ClubSwitcher'
 import { useI18n } from './i18n'
 import { LANGUAGES } from './i18n/languages'
 import { RolesPage } from './pages/RolesPage'
@@ -32,7 +33,7 @@ function loadPage(): PageId {
 }
 
 export default function App() {
-  const { loading, error, photoSearching } = useStore()
+  const { loading, error, photoSearching, logoSearching, activeClub } = useStore()
   const { t, lang, setLang } = useI18n()
   const [page, setPageState] = useState<PageId>(loadPage)
   const Page = PAGES[page]
@@ -60,8 +61,10 @@ export default function App() {
         <header className="flex h-(--header-height) shrink-0 items-center gap-6 border-b border-border bg-card px-5">
           <div className="flex items-baseline gap-2">
             <span className="text-[15px] font-bold tracking-tight text-emerald-400">FM27 Manager</span>
-            <span className="hidden text-xs text-muted-foreground lg:inline">{t.nav.subtitle}</span>
+            <span className="hidden text-xs text-muted-foreground xl:inline">{t.nav.subtitle}</span>
           </div>
+
+          {!loading && !error && <ClubSwitcher />}
 
           <nav className="flex h-full items-stretch gap-1">
             {(Object.keys(PAGES) as PageId[]).map((id) => (
@@ -77,6 +80,12 @@ export default function App() {
           </nav>
 
           <div className="ml-auto flex items-center gap-3">
+            {logoSearching && !photoSearching && (
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Loader2Icon className="size-3.5 animate-spin" />
+                {t.clubs.searchingLogo}
+              </span>
+            )}
             {photoSearching && (
               <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <Loader2Icon className="size-3.5 animate-spin" />
@@ -111,7 +120,8 @@ export default function App() {
               <Loader2Icon className="size-4 animate-spin" /> {t.common.loading}
             </div>
           ) : (
-            <Page key={page} />
+            // Changer de club remonte la page (la tactique en cours est celle du nouveau club).
+            <Page key={`${page}:${activeClub.id}`} />
           )}
         </main>
         <Toaster position="bottom-right" richColors />

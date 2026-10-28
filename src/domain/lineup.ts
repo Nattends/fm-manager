@@ -6,18 +6,25 @@ import { hungarianMax } from './hungarian'
 import { formationName, isFieldCell, positionAt } from './pitch'
 import type { Position } from './positions'
 import { rateRole, type RoleRating } from './rating'
-import type { Player, RoleDefinition, TacticSlot } from './types'
+import type { Phase, Player, RoleDefinition, SlotShape, TacticSlot } from './types'
 
 export const BACKUPS_PER_SLOT = 2
 
 export interface RatedPlayer {
   player: Player
+  /** Note dans la phase affichée. */
   rating: RoleRating
+  /** Note globale : moyenne des notes avec et sans ballon (critère du meilleur XI). */
+  overall: number
 }
 
 export interface LineupSlot {
+  /** Disposition du poste dans la phase affichée (case, poste, coordonnées). */
   slot: FormationSlot
+  /** Poste enregistré dans la tactique (les deux phases). */
   tacticSlot: TacticSlot
+  /** Case, rôle et devoir dans la phase affichée. */
+  shape: SlotShape
   role: RoleDefinition
   starter: RatedPlayer | null
   locked: boolean
@@ -26,9 +33,45 @@ export interface LineupSlot {
 
 export interface Lineup {
   slots: LineupSlot[]
+  /** Somme des notes globales des titulaires. */
   totalScore: number
+  /** Somme des notes des titulaires dans chaque phase. */
+  phaseScores: Record<Phase, number>
   /** Joueurs disponibles hors XI. */
   bench: Player[]
+}
+
+function shapeOf(s: SlotShape): SlotShape {
+  return { row: s.row, col: s.col, roleId: s.roleId, duty: s.duty }
+}
+
+/** Les postes vus dans une phase : row / col / rôle / devoir de cette phase. */
+export function phaseSlots(slots: TacticSlot[], phase: Phase): TacticSlot[] {
+  return phase === 'ip' ? slots : slots.map((s) => ({ ...s, ...shapeOf(s.oop) }))
+}
+
+/** Réécrit dans la tactique les postes modifiés dans la vue d'une phase (inverse de phaseSlots). */
+export function mergePhase(slots: TacticSlot[], phase: Phase, view: TacticSlot[]): TacticSlot[] {
+  return slots.map((s) => {
+    const v = view.find((x) => x.slotId === s.slotId)
+    if (!v) return s
+    return phase === 'ip'
+      ? { ...s, ...shapeOf(v), lockedPlayerId: v.lockedPlayerId }
+      : { ...s, oop: shapeOf(v), lockedPlayerId: v.lockedPlayerId }
+  })
+}
+
+/** Modifie la case, le rôle ou le devoir d'un poste dans une phase. */
+export function patchShape(slots: TacticSlot[], phase: Phase, slotId: string, patch: Partial<SlotShape>): TacticSlot[] {
+  return slots.map((s) => {
+    if (s.slotId !== slotId) return s
+    return phase === 'ip' ? { ...s, ...patch } : { ...s, oop: { ...s.oop, ...patch } }
+  })
+}
+
+/** Sans ballon = avec ballon (même case, même rôle) pour tous les postes. */
+export function copyInPossession(slots: TacticSlot[]): TacticSlot[] {
+  return slots.map((s) => ({ ...s, oop: shapeOf(s) }))
 }
 
 /** Partie modifiable d'une tactique par glisser-déposer. */
@@ -39,9 +82,10 @@ export interface Assignment {
 
 /** Slots de tactique par défaut pour une formation (rôle par défaut, aucun verrou). */
 export function defaultTacticSlots(formation: Formation): TacticSlot[] {
-  return formation.slots.map((s) => ({
-    slotId: s.id, row: s.row, col: s.col, roleId: s.defaultRole, duty: 'auto', lockedPlayerId: null,
-  }))
+  return formation.slots.map((s) => {
+    const shape: SlotShape = { row: s.row, col: s.col, roleId: s.defaultRole, duty: 'auto' }
+    return { slotId: s.id, ...shape, oop: { ...shape }, lockedPlayerId: null }
+  })
 }
 
 /**
@@ -49,18 +93,15 @@ export function defaultTacticSlots(formation: Formation): TacticSlot[] {
  * (sans row/col) à partir de sa formation prédéfinie.
  */
 export function normalizeTacticSlots(slots: Partial<TacticSlot>[], formationId: string): TacticSlot[] {
-  if (slots.length > 0 && slots.every((s) => s.row !== undefined && s.col !== undefined)) return slots as TacticSlot[]
-  const preset = getFormation(formationId)
-  return preset.slots.map((p) => {
+  const withCells = slots.length > 0 && slots.every((s) => s.row !== undefined && s.col !== undefined)
+  const base: Partial<TacticSlot>[] = withCells ? slots : getFormation(formationId).slots.map((p) => {
     const s = slots.find((x) => x.slotId === p.id)
-    return {
-      slotId: p.id,
-      row: s?.row ?? p.row,
-      col: s?.col ?? p.col,
-      roleId: s?.roleId ?? p.defaultRole,
-      duty: s?.duty ?? 'auto',
-      lockedPlayerId: s?.lockedPlayerId ?? null,
-    }
+    return { ...s, slotId: p.id, row: s?.row ?? p.row, col: s?.col ?? p.col, roleId: s?.roleId ?? p.defaultRole }
+  })
+  // Tactiques enregistrées avant les phases de jeu : sans ballon = avec ballon.
+  return base.map((s) => {
+    const shape: SlotShape = { row: s.row!, col: s.col!, roleId: s.roleId!, duty: s.duty ?? 'auto' }
+    return { slotId: s.slotId!, ...shape, oop: s.oop ? shapeOf(s.oop) : { ...shape }, lockedPlayerId: s.lockedPlayerId ?? null }
   })
 }
 
@@ -120,33 +161,46 @@ export function resolveRole(roleId: string, roles: RoleDefinition[], position: P
 }
 
 export function isAvailable(p: Player): boolean {
-  return p.status !== 'unavailable'
+  return p.status !== 'unavailable' && !p.onLoan
 }
 
 /**
  * Calcule le meilleur XI : les joueurs verrouillés sont placés d'abord,
  * puis les postes restants sont pourvus par affectation optimale (algorithme hongrois)
- * en maximisant la somme des notes de rôle.
+ * en maximisant la somme des notes globales (moyenne des notes avec et sans ballon).
+ * `phase` choisit la disposition et la note affichées.
  */
 export function computeLineup(
   tacticSlots: TacticSlot[],
   players: Player[],
   roles: RoleDefinition[],
   excludedPlayerIds: number[] = [],
+  phase: Phase = 'ip',
 ): Lineup {
   const available = players.filter(isAvailable)
   const byId = new Map(available.map((p) => [p.id, p]))
   const excluded = new Set(excludedPlayerIds)
 
-  const layout = layoutOf(tacticSlots)
-  const entries = tacticSlots.map((tacticSlot, i) => ({
-    slot: layout[i],
-    tacticSlot,
-    role: resolveRole(tacticSlot.roleId, roles, layout[i].position),
-  }))
+  const views = { ip: phaseSlots(tacticSlots, 'ip'), oop: phaseSlots(tacticSlots, 'oop') }
+  const layouts = { ip: layoutOf(views.ip), oop: layoutOf(views.oop) }
+  const entries = tacticSlots.map((tacticSlot, i) => {
+    const at = (ph: Phase) => ({
+      slot: layouts[ph][i],
+      role: resolveRole(views[ph][i].roleId, roles, layouts[ph][i].position),
+    })
+    return { tacticSlot, shape: shapeOf(views[phase][i]), ip: at('ip'), oop: at('oop') }
+  })
+  type Entry = (typeof entries)[number]
+
+  const rate = (p: Player, e: Entry) => {
+    const ip = rateRole(p, e.ip.role, e.ip.slot.position)
+    const oop = rateRole(p, e.oop.role, e.oop.slot.position)
+    return { ip, oop, overall: Math.round(((ip.score + oop.score) / 2) * 10) / 10 }
+  }
+  type Rated = ReturnType<typeof rate> & { player: Player }
 
   const used = new Set<number>()
-  const starters = new Map<string, RatedPlayer>()
+  const starters = new Map<string, Rated>()
   const lockedSlots = new Set<string>()
 
   for (const e of entries) {
@@ -154,43 +208,56 @@ export function computeLineup(
     const p = id !== null ? byId.get(id) : undefined
     if (p && !used.has(p.id)) {
       used.add(p.id)
-      lockedSlots.add(e.slot.id)
-      starters.set(e.slot.id, { player: p, rating: rateRole(p, e.role, e.slot.position) })
+      lockedSlots.add(e.tacticSlot.slotId)
+      starters.set(e.tacticSlot.slotId, { player: p, ...rate(p, e) })
     }
   }
 
-  const freeSlots = entries.filter((e) => !lockedSlots.has(e.slot.id))
+  const freeSlots = entries.filter((e) => !lockedSlots.has(e.tacticSlot.slotId))
   const pool = available.filter((p) => !used.has(p.id) && !excluded.has(p.id))
 
   if (freeSlots.length > 0 && pool.length > 0) {
-    const ratings = freeSlots.map((e) => pool.map((p) => rateRole(p, e.role, e.slot.position)))
+    const ratings = freeSlots.map((e) => pool.map((p) => rate(p, e)))
     // Colonnes fictives (score 0) si moins de joueurs que de postes : poste laissé vide.
     const padding = Math.max(0, freeSlots.length - pool.length)
-    const matrix = ratings.map((row) => [...row.map((r) => r.score), ...new Array<number>(padding).fill(0)])
+    const matrix = ratings.map((row) => [...row.map((r) => r.overall), ...new Array<number>(padding).fill(0)])
     const assignment = hungarianMax(matrix)
     assignment.forEach((col, row) => {
       if (col < pool.length) {
         const p = pool[col]
         used.add(p.id)
-        starters.set(freeSlots[row].slot.id, { player: p, rating: ratings[row][col] })
+        starters.set(freeSlots[row].tacticSlot.slotId, { player: p, ...ratings[row][col] })
       }
     })
   }
 
   const bench = available.filter((p) => !used.has(p.id) && !excluded.has(p.id))
+  const shown = (r: Rated): RatedPlayer => ({ player: r.player, rating: r[phase], overall: r.overall })
 
-  const slots: LineupSlot[] = entries.map((e) => ({
-    ...e,
-    starter: starters.get(e.slot.id) ?? null,
-    locked: lockedSlots.has(e.slot.id),
-    backups: bench
-      .map((p) => ({ player: p, rating: rateRole(p, e.role, e.slot.position) }))
-      .sort((a, b) => b.rating.score - a.rating.score)
-      .slice(0, BACKUPS_PER_SLOT),
-  }))
+  const slots: LineupSlot[] = entries.map((e) => {
+    const starter = starters.get(e.tacticSlot.slotId)
+    return {
+      slot: e[phase].slot,
+      tacticSlot: e.tacticSlot,
+      shape: e.shape,
+      role: e[phase].role,
+      starter: starter ? shown(starter) : null,
+      locked: lockedSlots.has(e.tacticSlot.slotId),
+      backups: bench
+        .map((p) => shown({ player: p, ...rate(p, e) }))
+        .sort((a, b) => b.overall - a.overall)
+        .slice(0, BACKUPS_PER_SLOT),
+    }
+  })
 
-  const totalScore = slots.reduce((sum, s) => sum + (s.starter?.rating.score ?? 0), 0)
-  return { slots, totalScore: Math.round(totalScore * 10) / 10, bench }
+  const round = (n: number) => Math.round(n * 10) / 10
+  const sum = (f: (r: Rated) => number) => round([...starters.values()].reduce((acc, r) => acc + f(r), 0))
+  return {
+    slots,
+    totalScore: sum((r) => r.overall),
+    phaseScores: { ip: sum((r) => r.ip.score), oop: sum((r) => r.oop.score) },
+    bench,
+  }
 }
 
 /**
@@ -240,8 +307,10 @@ export function isOutOfPosition(player: Player, position: Position): boolean {
 }
 
 export interface LineupSummary {
-  /** Note moyenne du XI (postes vides comptés 0). */
+  /** Note moyenne du XI (postes vides comptés 0), moyenne des deux phases. */
   average: number
+  /** Note moyenne du XI avec et sans ballon. */
+  phases: Record<Phase, number>
   /** Âge moyen des titulaires (null si aucun). */
   averageAge: number | null
   /** Note moyenne des titulaires de chaque ligne (null si aucun titulaire notable). */
@@ -252,11 +321,13 @@ export interface LineupSummary {
 
 export function summarizeLineup(lineup: Lineup): LineupSummary {
   const starters = lineup.slots.flatMap((s) => (s.starter ? [{ ...s.starter, position: s.slot.position }] : []))
+  const per = (total: number) => (lineup.slots.length ? Math.round((total / lineup.slots.length) * 10) / 10 : 0)
   const avg = (ns: number[]) => (ns.length ? Math.round((ns.reduce((a, b) => a + b, 0) / ns.length) * 10) / 10 : null)
   const lineAvg = (line: PitchLine) =>
     avg(starters.filter((s) => LINE_OF[s.position] === line && s.rating.rated).map((s) => s.rating.score))
   return {
-    average: lineup.slots.length ? Math.round((lineup.totalScore / lineup.slots.length) * 10) / 10 : 0,
+    average: per(lineup.totalScore),
+    phases: { ip: per(lineup.phaseScores.ip), oop: per(lineup.phaseScores.oop) },
     averageAge: avg(starters.map((s) => s.player.age)),
     lines: { defence: lineAvg('defence'), midfield: lineAvg('midfield'), attack: lineAvg('attack') },
     outOfPosition: starters.filter((s) => isOutOfPosition(s.player, s.position)).length,

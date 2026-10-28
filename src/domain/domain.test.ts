@@ -4,9 +4,10 @@ import { DEFAULT_ROLES, DEFAULT_ROLE_BY_POSITION, isRoleList } from './defaultRo
 import { FORMATIONS, getFormation } from './formations'
 import { hungarianMax } from './hungarian'
 import {
-  benchPlayer, computeLineup, defaultTacticSlots, layoutName, moveSlot, normalizeTacticSlots, placePlayer, resolveRole, summarizeLineup,
+  benchPlayer, computeLineup, copyInPossession, defaultTacticSlots, layoutName, mergePhase, moveSlot, normalizeTacticSlots,
+  patchShape, phaseSlots, placePlayer, resolveRole, summarizeLineup,
 } from './lineup'
-import { formationName, positionAt } from './pitch'
+import { PITCH_COLS, PITCH_ROWS, formationName, positionAt } from './pitch'
 import { POSITIONS, isPosition, type Position } from './positions'
 import { allRoleRatings, familiarityFactor, nextWeight, rateRole, scoreFromAverage } from './rating'
 import type { Attributes, Player } from './types'
@@ -14,7 +15,7 @@ import type { Attributes, Player } from './types'
 let nextId = 1
 function player(name: string, positions: Partial<Record<Position, number>>, attributes: Attributes = {}, caStars = 3): Player {
   return {
-    id: nextId++, name, age: 25, nationality: 'FRA', foot: 'right', positions,
+    id: nextId++, name, age: 25, nationality: 'FRA', clubId: 1, club: '', onLoan: false, foot: 'right', positions,
     caStars, paStars: caStars, contractEnd: null, wage: null, value: null,
     status: 'rotation', notes: '', attributes, photo: null, photoLookup: null,
   }
@@ -240,10 +241,12 @@ describe('computeLineup', () => {
     player('AG', { AML: 20 }, level(14)), player('AD', { AMR: 20 }, level(14)),
     player('BU', { ST: 20 }, level(16)), player('BU2', { ST: 20 }, level(12)),
     player('Blessé', { ST: 20 }, level(19)),
+    player('Prêté', { ST: 20 }, level(19)),
   ]
-  squad[squad.length - 1].status = 'unavailable'
+  squad[squad.length - 2].status = 'unavailable'
+  squad[squad.length - 1].onLoan = true
 
-  it('place chaque joueur à son poste naturel et exclut les indisponibles', () => {
+  it('place chaque joueur à son poste naturel et exclut les indisponibles et les prêtés', () => {
     const lineup = computeLineup(defaultTacticSlots(f), squad, DEFAULT_ROLES)
     const at = (id: string) => lineup.slots.find((s) => s.slot.id === id)!.starter?.player.name
     expect(at('gk')).toBe('Gardien')
@@ -309,5 +312,68 @@ describe('computeLineup', () => {
   it('laisse des postes vides si l\'effectif est trop court', () => {
     const lineup = computeLineup(defaultTacticSlots(f), squad.slice(0, 3), DEFAULT_ROLES)
     expect(lineup.slots.filter((s) => s.starter).length).toBe(3)
+  })
+})
+
+describe('phases avec et sans ballon', () => {
+  const f = getFormation('4-3-3')
+  const amr = () => defaultTacticSlots(f).find((s) => positionAt(s.row, s.col) === 'AMR')!
+  /** Case libre du poste MD dans la vue sans ballon. */
+  const mrCell = (slots: ReturnType<typeof defaultTacticSlots>) => {
+    for (let row = 0; row < PITCH_ROWS; row++) {
+      for (let col = 0; col < PITCH_COLS; col++) {
+        if (positionAt(row, col) === 'MR' && !slots.some((s) => s.row === row && s.col === col)) return { row, col }
+      }
+    }
+    throw new Error('aucune case MD libre')
+  }
+  /** Tactique dont l'ailier droit redescend milieu droit sans ballon. */
+  const withMrOutOfPossession = () => {
+    const slots = defaultTacticSlots(f)
+    const view = phaseSlots(slots, 'oop')
+    const { row, col } = mrCell(view)
+    return mergePhase(slots, 'oop', moveSlot(view, amr().slotId, row, col, DEFAULT_ROLES))
+  }
+
+  it('par défaut, sans ballon = avec ballon', () => {
+    const slots = defaultTacticSlots(f)
+    expect(phaseSlots(slots, 'oop').map(({ row, col, roleId }) => [row, col, roleId]))
+      .toEqual(slots.map(({ row, col, roleId }) => [row, col, roleId]))
+  })
+
+  it('déplacer un poste sans ballon ne change pas la disposition avec ballon', () => {
+    const slots = withMrOutOfPossession()
+    const moved = slots.find((s) => s.slotId === amr().slotId)!
+    expect(positionAt(moved.row, moved.col)).toBe('AMR')
+    expect(positionAt(moved.oop.row, moved.oop.col)).toBe('MR')
+    expect(layoutName(phaseSlots(slots, 'ip')).shape).toBe(layoutName(defaultTacticSlots(f)).shape)
+    expect(copyInPossession(slots).find((s) => s.slotId === moved.slotId)!.oop.row).toBe(moved.row)
+  })
+
+  it('modifie le rôle d\'une seule phase', () => {
+    const slots = patchShape(defaultTacticSlots(f), 'oop', amr().slotId, { roleId: 'fm-winger', duty: 'defend' })
+    const s = slots.find((x) => x.slotId === amr().slotId)!
+    expect(s.oop.roleId).toBe('fm-winger')
+    expect(s.oop.duty).toBe('defend')
+    expect(s.roleId).toBe(amr().roleId)
+  })
+
+  it('anciennes tactiques : la phase sans ballon reprend la phase avec ballon', () => {
+    const legacy = defaultTacticSlots(f).map(({ oop: _oop, ...s }) => s)
+    const slots = normalizeTacticSlots(legacy, f.id)
+    expect(slots.every((s) => s.oop.row === s.row && s.oop.col === s.col && s.oop.roleId === s.roleId)).toBe(true)
+  })
+
+  it('le meilleur XI tient compte des deux phases', () => {
+    const squad = [player('Ailier', { AMR: 20 }, level(16)), player('Polyvalent', { AMR: 20, MR: 20 }, level(15))]
+    const starterAt = (slots: ReturnType<typeof defaultTacticSlots>, phase: 'ip' | 'oop' = 'ip') =>
+      computeLineup(slots, squad, DEFAULT_ROLES, [], phase).slots.find((s) => s.tacticSlot.slotId === amr().slotId)!
+    expect(starterAt(defaultTacticSlots(f)).starter?.player.name).toBe('Ailier')
+    const slots = withMrOutOfPossession()
+    expect(starterAt(slots).starter?.player.name).toBe('Polyvalent')
+    // La vue sans ballon affiche le poste MD et la note à ce poste.
+    const oop = starterAt(slots, 'oop')
+    expect(oop.slot.position).toBe('MR')
+    expect(oop.starter!.rating.familiarityFactor).toBe(1)
   })
 })

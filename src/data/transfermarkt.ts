@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
+import { pickClub, type ClubCandidate } from '../domain/clubMatch'
 import { pickCandidate, type PhotoCandidate } from '../domain/photoMatch'
 import type { Player } from '../domain/types'
 
@@ -9,12 +10,15 @@ async function get(url: string): Promise<ArrayBuffer> {
   return invoke<ArrayBuffer>('transfermarkt_get', { url })
 }
 
+/** Bloc de résultats de la page de recherche dont le titre commence par `title`. */
+function resultBox(html: string, title: string): Element | undefined {
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  return [...doc.querySelectorAll('.box')].find((b) => b.querySelector('h2')?.textContent?.trim().startsWith(title))
+}
+
 /** Lit le tableau « Search results for players » de la page de recherche. */
 export function parseSearchResults(html: string): PhotoCandidate[] {
-  const doc = new DOMParser().parseFromString(html, 'text/html')
-  const box = [...doc.querySelectorAll('.box')].find((b) =>
-    b.querySelector('h2')?.textContent?.trim().startsWith('Search results for players'),
-  )
+  const box = resultBox(html, 'Search results for players')
   if (!box) return []
   return [...box.querySelectorAll('table.items > tbody > tr')].flatMap((row) => {
     const cells = row.querySelectorAll(':scope > td')
@@ -55,5 +59,34 @@ export async function findTransfermarktPhoto(player: Pick<Player, 'name' | 'age'
     return toDataUrl(await get(large), large)
   } catch {
     return toDataUrl(await get(match.photoUrl), match.photoUrl)
+  }
+}
+
+/** Lit le tableau « Search results: Clubs » de la page de recherche. */
+export function parseClubResults(html: string): ClubCandidate[] {
+  const box = resultBox(html, 'Search results: Clubs')
+  if (!box) return []
+  return [...box.querySelectorAll('table.items > tbody > tr')].flatMap((row) => {
+    const name = row.querySelector('td.hauptlink a')?.getAttribute('title')?.trim()
+    if (!name) return []
+    const img = row.querySelector('td.suche-vereinswappen img')?.getAttribute('src') ?? ''
+    return [{ name, logoUrl: img.includes('/wappen/') && !img.includes('default') ? img : null }]
+  })
+}
+
+/**
+ * Cherche le logo d'un club sur Transfermarkt d'après son nom. Renvoie null si aucun
+ * club ne correspond ; lève une erreur si le site est injoignable.
+ */
+export async function findClubLogo(name: string): Promise<string | null> {
+  const html = new TextDecoder().decode(await get(SEARCH_URL + encodeURIComponent(name.trim())))
+  const match = pickClub(name, parseClubResults(html))
+  if (!match?.logoUrl) return null
+  // Version « head » (plus grande) du même logo ; repli sur la petite.
+  const large = match.logoUrl.replace('/wappen/small/', '/wappen/head/')
+  try {
+    return toDataUrl(await get(large), large)
+  } catch {
+    return toDataUrl(await get(match.logoUrl), match.logoUrl)
   }
 }

@@ -11,7 +11,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { PositionChip, StatusBadge } from '@/components/chips'
+import { LoanBadge, PositionChip, StatusBadge } from '@/components/chips'
+import { PlayerClub } from '@/components/ClubLogo'
 import { PositionPitch } from '@/components/PositionPitch'
 import { EmptyState, SectionTitle } from '@/components/layout'
 import { PlayerAvatar, RatingBadge, Stars } from '@/components/ui'
@@ -80,14 +81,28 @@ export function PlayerSheet({ playerId, onClose }: { playerId: number; onClose: 
             <div className="flex items-center gap-2.5">
               <DialogTitle className="truncate text-xl font-semibold text-slate-50">{player.name}</DialogTitle>
               <StatusBadge status={player.status} />
+              {player.onLoan && <LoanBadge club={player.club} />}
             </div>
             <DialogDescription className="text-sm text-muted-foreground">
               {[t.player.ageValue(player.age), player.nationality, t.player.footValue(t.foot[player.foot])].filter(Boolean).join(' · ')}
             </DialogDescription>
+            <PlayerClub player={player} size={22} className="text-sm font-medium text-slate-200" />
             <div className="flex flex-wrap gap-1.5">
               {POSITIONS.filter((p) => player.positions[p] !== undefined).map((p) => (
                 <PositionChip key={p} position={p} familiarity={player.positions[p]} />
               ))}
+            </div>
+          </div>
+
+          {/* Étoiles CA / PA (information seulement, n'entrent pas dans les notes) */}
+          <div className="flex shrink-0 flex-col gap-1.5 self-center border-r border-border pr-5" title={t.player.starsHint}>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{t.squad.col.ca}</span>
+              <Stars value={player.caStars} className="text-base" />
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{t.squad.col.pa}</span>
+              <Stars value={player.paStars} className="text-base" />
             </div>
           </div>
 

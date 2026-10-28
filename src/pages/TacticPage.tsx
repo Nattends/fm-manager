@@ -3,7 +3,7 @@ import {
   type DragEndEvent, type DragStartEvent,
 } from '@dnd-kit/core'
 import {
-  GripVerticalIcon, LockIcon, LockOpenIcon, Maximize2Icon, Minimize2Icon, PanelRightCloseIcon, PanelRightOpenIcon,
+  CopyIcon, GripVerticalIcon, LockIcon, LockOpenIcon, Maximize2Icon, Minimize2Icon, PanelRightCloseIcon, PanelRightOpenIcon,
   RotateCcwIcon, SaveIcon, Trash2Icon, Undo2Icon,
 } from 'lucide-react'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { FamiliarityTag, PositionChip } from '@/components/chips'
 import { PageHeader, StatTile } from '@/components/layout'
@@ -23,13 +24,14 @@ import { PlayerAvatar, RatingBadge } from '@/components/ui'
 import { LINE_COLORS, lineColorOf, scoreColor, scoreRing, scoreText } from '@/components/styles'
 import { CUSTOM_FORMATION_ID, FORMATIONS, getFormation, type Formation } from '@/domain/formations'
 import {
-  benchPlayer, computeLineup, defaultTacticSlots, isAvailable, layoutName, moveSlot, placePlayer, summarizeLineup,
+  benchPlayer, computeLineup, copyInPossession, defaultTacticSlots, isAvailable, layoutName, mergePhase, moveSlot,
+  patchShape, phaseSlots, placePlayer, summarizeLineup,
   type Assignment, type Lineup, type LineupSlot, type LineupSummary, type PitchLine,
 } from '@/domain/lineup'
 import { PITCH_COLS, PITCH_ROWS, cellCenter, isFieldCell, positionAt } from '@/domain/pitch'
 import { POSITIONS } from '@/domain/positions'
 import { bestRole } from '@/domain/rating'
-import type { Duty, NewTactic, Player, RoleDefinition, TacticSlot } from '@/domain/types'
+import type { Duty, NewTactic, Phase, Player, RoleDefinition, TacticSlot } from '@/domain/types'
 import { useI18n } from '@/i18n'
 import { useStore } from '@/store'
 import { PlayerSheet } from './PlayerSheet'
@@ -83,8 +85,10 @@ function remapSlots(prev: TacticSlot[], formation: Formation, roles: RoleDefinit
 }
 
 export function TacticPage() {
-  const { players, roles, tactics, saveTactic, deleteTactic } = useStore()
+  const { players: allPlayers, roles, tactics, saveTactic, deleteTactic } = useStore()
   const { t, roleName } = useI18n()
+  // Les joueurs prêtés ne font pas partie de l'effectif : ni titulaires, ni doublures, ni liste.
+  const players = useMemo(() => allPlayers.filter((p) => !p.onLoan), [allPlayers])
   const [draft, setDraft] = useState<NewTactic>(() => tactics[0] ?? newTactic(t.tactic.defaultName))
   const [dirty, setDirty] = useState(false)
   const [openId, setOpenId] = useState<number | null>(null)
@@ -92,6 +96,8 @@ export function TacticPage() {
   const [tab, setTab] = useState<PanelTab>('squad')
   const [big, setBigState] = useState(loadBigView)
   const [panelOpen, setPanelOpen] = useState(false)
+  /** Phase affichée et modifiée sur le terrain (avec ou sans ballon). */
+  const [phase, setPhase] = useState<Phase>('ip')
   // Fenêtre en portrait (écran vertical) : terrain vertical même en grande vue, panneau sous le terrain.
   const portrait = useIsPortrait()
   const rotated = big && !portrait
@@ -117,10 +123,12 @@ export function TacticPage() {
   // Distance minimale : un simple clic ouvre toujours la fiche joueur.
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
 
-  const layout = layoutName(draft.slots)
+  // Postes vus dans la phase affichée : déplacements et formations s'appliquent à cette phase.
+  const view = phaseSlots(draft.slots, phase)
+  const layout = layoutName(view)
   const lineup = useMemo(
-    () => computeLineup(draft.slots, players, roles, draft.excludedPlayerIds),
-    [draft.slots, draft.excludedPlayerIds, players, roles],
+    () => computeLineup(draft.slots, players, roles, draft.excludedPlayerIds, phase),
+    [draft.slots, draft.excludedPlayerIds, players, roles, phase],
   )
   const summary = summarizeLineup(lineup)
   const starterIds = new Set(lineup.slots.flatMap((s) => (s.starter ? [s.starter.player.id] : [])))
@@ -132,6 +140,9 @@ export function TacticPage() {
   const apply = (a: Assignment) => update(a)
   const updateSlot = (slotId: string, patch: Partial<TacticSlot>) =>
     update({ slots: draft.slots.map((s) => (s.slotId === slotId ? { ...s, ...patch } : s)) })
+  const updateShape = (slotId: string, patch: { roleId?: string; duty?: Duty }) =>
+    update({ slots: patchShape(draft.slots, phase, slotId, patch) })
+  const updateView = (next: TacticSlot[]) => update({ slots: mergePhase(draft.slots, phase, next) })
 
   const onDragStart = (e: DragStartEvent) => {
     const data = e.active.data.current as DragData
@@ -154,7 +165,7 @@ export function TacticPage() {
     if (data.kind === 'card') {
       if (!overId.startsWith(CELL_PREFIX)) return
       const [row, col] = overId.slice(CELL_PREFIX.length).split(':').map(Number)
-      update({ slots: moveSlot(draft.slots, data.slotId, row, col, roles) })
+      updateView(moveSlot(view, data.slotId, row, col, roles))
     } else if (overId === BENCH_ID) {
       if (starterIds.has(data.playerId)) apply(benchPlayer(lineup, draft.excludedPlayerIds, data.playerId))
     } else if (overId.startsWith(SLOT_PREFIX)) {
@@ -163,7 +174,8 @@ export function TacticPage() {
   }
 
   const save = async () => {
-    const saved = await saveTactic({ ...draft, formation: layout.presetId })
+    // La formation enregistrée est celle avec ballon.
+    const saved = await saveTactic({ ...draft, formation: layoutName(draft.slots).presetId })
     setDraft(saved)
     setDirty(false)
   }
@@ -224,7 +236,7 @@ export function TacticPage() {
             </SelectContent>
           </Select>
           <Input className="h-8 w-48" value={draft.name} aria-label={t.tactic.name} onChange={(e) => update({ name: e.target.value })} />
-          <Select value={layout.presetId} onValueChange={(v) => { const f = getFormation(v); update({ formation: f.id, slots: remapSlots(draft.slots, f, roles) }) }}>
+          <Select value={layout.presetId} onValueChange={(v) => updateView(remapSlots(view, getFormation(v), roles))}>
             <SelectTrigger size="sm" className="w-44" title={t.tactic.formationTitle}><SelectValue /></SelectTrigger>
             <SelectContent>
               {layout.presetId === CUSTOM_FORMATION_ID && (
@@ -233,6 +245,16 @@ export function TacticPage() {
               {FORMATIONS.map((f) => <SelectItem key={f.id} value={f.id}>{t.formations[f.id] ?? f.id}</SelectItem>)}
             </SelectContent>
           </Select>
+          <ToggleGroup type="single" variant="outline" size="sm" value={phase} title={t.tactic.phaseTitle}
+            onValueChange={(v) => v && setPhase(v as Phase)}>
+            <ToggleGroupItem value="ip" className="px-3">{t.tactic.phase.ip}</ToggleGroupItem>
+            <ToggleGroupItem value="oop" className="px-3">{t.tactic.phase.oop}</ToggleGroupItem>
+          </ToggleGroup>
+          {phase === 'oop' && (
+            <Button variant="ghost" size="sm" onClick={() => update({ slots: copyInPossession(draft.slots) })} title={t.tactic.copyFromIpTitle}>
+              <CopyIcon />{t.tactic.copyFromIp}
+            </Button>
+          )}
           <Button variant="ghost" size="sm" onClick={resetXi} title={t.tactic.resetTitle}><RotateCcwIcon />{t.tactic.reset}</Button>
         </PageHeader>
 
@@ -246,11 +268,11 @@ export function TacticPage() {
                 background: `radial-gradient(ellipse at center, transparent 50%, rgba(0, 0, 0, 0.35)), repeating-linear-gradient(${rotated ? 90 : 180}deg, #166534 0 ${rotated ? 6.25 : 10}%, #15803d ${rotated ? 6.25 : 10}% ${rotated ? 12.5 : 20}%)`,
               }}>
               <PitchLines big={rotated} />
-              {dragged?.kind === 'card' && <CellGrid slots={draft.slots} movingId={dragged.slot.slot.id} big={rotated} />}
+              {dragged?.kind === 'card' && <CellGrid slots={view} movingId={dragged.slot.slot.id} big={rotated} />}
               {lineup.slots.map((s) => (
                 <SlotCard key={s.slot.id} slot={s} roles={roles} big={big} rotated={rotated} acceptsPlayers={dragged?.kind !== 'card'}
-                  onRole={(roleId) => updateSlot(s.slot.id, { roleId })}
-                  onDuty={(duty) => updateSlot(s.slot.id, { duty })}
+                  onRole={(roleId) => updateShape(s.slot.id, { roleId })}
+                  onDuty={(duty) => updateShape(s.slot.id, { duty })}
                   onToggleLock={() => updateSlot(s.slot.id, { lockedPlayerId: s.locked ? null : (s.starter?.player.id ?? null) })}
                   onOpen={setOpenId} />
               ))}
@@ -322,9 +344,12 @@ function SummaryPanel({ summary }: { summary: LineupSummary }) {
   const { t } = useI18n()
   return (
     <section className="flex shrink-0 items-stretch gap-2 rounded-lg border border-border bg-card p-2.5">
-      <div className={cn('flex w-20 shrink-0 flex-col items-center justify-center rounded-md ring-1', scoreColor(summary.average))}>
+      <div className={cn('flex w-24 shrink-0 flex-col items-center justify-center rounded-md py-1 ring-1', scoreColor(summary.average))}>
         <span className="text-2xl leading-none font-bold tabular-nums">{summary.average.toFixed(0)}</span>
         <span className="mt-1 text-[10px] tracking-wide uppercase opacity-80">{t.tactic.xiRating.replace(':', '')}</span>
+        <span className="mt-1 px-1 text-center text-[9px] leading-tight opacity-70">
+          {t.tactic.phaseRatings(Math.round(summary.phases.ip), Math.round(summary.phases.oop))}
+        </span>
       </div>
       <div className="grid flex-1 grid-cols-3 gap-1.5">
         {LINES.map((line) => {
@@ -522,12 +547,12 @@ function SlotCard({ slot, roles, big, rotated, acceptsPlayers, onRole, onDuty, o
           {!isGk && <GripVerticalIcon className="-ml-0.5 size-3 opacity-70" />}
           {t.positions[position]}
         </span>
-        <RolePicker roles={roles} value={slot.tacticSlot.roleId} current={slot.role} position={position} onChange={onRole}
+        <RolePicker roles={roles} value={slot.shape.roleId} current={slot.role} position={position} onChange={onRole}
           className="h-5 flex-1 font-medium text-current hover:bg-black/20" />
-        <Select value={slot.tacticSlot.duty} onValueChange={(v) => onDuty(v as Duty)}>
+        <Select value={slot.shape.duty} onValueChange={(v) => onDuty(v as Duty)}>
           <SelectTrigger size="sm" title={t.tactic.duty}
             className="h-5! w-auto shrink-0 gap-0.5 border-0 bg-black/25 px-1 text-[inherit] font-semibold text-current shadow-none hover:bg-black/40 [&_svg]:size-3 [&_svg]:text-current!">
-            <SelectValue>{t.dutyShort[slot.tacticSlot.duty]}</SelectValue>
+            <SelectValue>{t.dutyShort[slot.shape.duty]}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             {DUTIES.map((k) => <SelectItem key={k} value={k}>{t.duty[k]}</SelectItem>)}

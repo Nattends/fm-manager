@@ -2,7 +2,7 @@ import { cn } from '@/lib/utils'
 import type { Position } from '@/domain/positions'
 import type { PlayerStatus } from '@/domain/types'
 import { useI18n } from '@/i18n'
-import { familiarityColor, LINE_COLORS, lineColorOf, STATUS_STYLES } from './styles'
+import { familiarityColor, LINE_COLORS, lineColorOf, LOAN_STYLE, STATUS_STYLES } from './styles'
 
 /** Étiquette d'un poste (ex. « DC »), colorée selon sa ligne, avec la familiarité en option. */
 export function PositionChip({ position, familiarity, className }: {
@@ -28,6 +28,16 @@ export function FamiliarityTag({ value, className }: { value: number | undefined
   return (
     <span className={cn('font-medium', familiarityColor(value), className)}>
       {value ? familiarity(value) : t.tactic.neverPlayed}
+    </span>
+  )
+}
+
+/** Badge « Prêté à <club> » d'un joueur hors effectif. */
+export function LoanBadge({ club, className }: { club: string; className?: string }) {
+  const { t } = useI18n()
+  return (
+    <span className={cn('inline-flex h-5 items-center rounded-md px-1.5 text-[11px] font-medium ring-1', LOAN_STYLE, className)}>
+      {t.player.loanedTo(club)}
     </span>
   )
 }

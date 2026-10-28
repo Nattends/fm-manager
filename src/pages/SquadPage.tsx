@@ -12,8 +12,10 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { EmptyState, PageHeader } from '@/components/layout'
 import { PositionChip, StatusBadge } from '@/components/chips'
+import { PlayerClub } from '@/components/ClubLogo'
 import { PlayerAvatar, RatingBadge, Stars } from '@/components/ui'
 import { attrColor } from '@/components/styles'
 import { ATTRIBUTE_GROUP_IDS, attributesOf, type AttributeGroup, type AttributeKey } from '@/domain/attributes'
@@ -35,7 +37,7 @@ const PLAYS_AT = 14
 const VISIBILITY_KEY = 'squad.columns'
 const ALL = 'all'
 const STATUSES: PlayerStatus[] = ['key', 'rotation', 'prospect', 'for_sale', 'unavailable']
-const BASE_COLUMNS = ['age', 'nationality', 'positions', 'status', 'ca', 'pa', 'bestRole', 'contract', 'value', 'wage'] as const
+const BASE_COLUMNS = ['age', 'nationality', 'club', 'positions', 'status', 'ca', 'pa', 'bestRole', 'contract', 'value', 'wage'] as const
 /** Colonnes alignées à droite (nombres). */
 const NUMERIC = new Set<string>(['age', 'value', 'wage', ...ATTRIBUTE_GROUP_IDS.flatMap((g) => attributesOf(g))])
 
@@ -62,6 +64,10 @@ export function SquadPage() {
   const [visibility, setVisibility] = useState<VisibilityState>(loadVisibility)
   const [creating, setCreating] = useState(false)
   const [openId, setOpenId] = useState<number | null>(null)
+  /** Effectif ou joueurs prêtés (hors effectif). */
+  const [view, setView] = useState<'squad' | 'loaned'>('squad')
+  const loanedCount = players.filter((p) => p.onLoan).length
+  const squadCount = players.length - loanedCount
 
   useEffect(() => {
     try { localStorage.setItem(VISIBILITY_KEY, JSON.stringify(visibility)) } catch { /* ignoré */ }
@@ -79,12 +85,13 @@ export function SquadPage() {
     const q = search.trim().toLowerCase()
     const max = Number(ageMax)
     return players
-      .filter((p) => !q || p.name.toLowerCase().includes(q) || p.nationality.toLowerCase().includes(q))
+      .filter((p) => p.onLoan === (view === 'loaned'))
+      .filter((p) => !q || [p.name, p.nationality, p.club].some((s) => s.toLowerCase().includes(q)))
       .filter((p) => position === ALL || (p.positions[position] ?? 0) >= PLAYS_AT)
       .filter((p) => status === ALL || p.status === status)
       .filter((p) => !ageMax || p.age <= max)
       .map((player) => ({ player, best: bestRole(player, roles) }))
-  }, [players, roles, search, position, status, ageMax])
+  }, [players, roles, view, search, position, status, ageMax])
 
   const columns = useMemo(() => [
     col.accessor((r) => r.player.name, {
@@ -105,6 +112,10 @@ export function SquadPage() {
     }),
     col.accessor((r) => r.player.age, { id: 'age', header: t.squad.col.age }),
     col.accessor((r) => r.player.nationality, { id: 'nationality', header: t.squad.col.nationality }),
+    col.accessor((r) => (r.player.onLoan ? r.player.club : ''), {
+      id: 'club', header: t.squad.col.club,
+      cell: (c) => <PlayerClub player={c.row.original.player} className="max-w-56 text-slate-300" />,
+    }),
     col.display({
       id: 'positions', header: t.squad.col.positions,
       cell: (c) => (
@@ -167,8 +178,13 @@ export function SquadPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <PageHeader title={t.squad.title} count={t.squad.count(players.length)}
+      <PageHeader title={t.squad.title} count={t.squad.count(squadCount)}
         actions={<Button onClick={() => setCreating(true)}><PlusIcon />{t.squad.addPlayer}</Button>}>
+        <ToggleGroup type="single" variant="outline" size="sm" value={view}
+          onValueChange={(v) => v && setView(v as 'squad' | 'loaned')}>
+          <ToggleGroupItem value="squad">{t.squad.viewSquad(squadCount)}</ToggleGroupItem>
+          <ToggleGroupItem value="loaned">{t.squad.viewLoaned(loanedCount)}</ToggleGroupItem>
+        </ToggleGroup>
         <div className="relative">
           <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input className="h-8 w-56 pl-8" placeholder={t.squad.search} value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -235,6 +251,8 @@ export function SquadPage() {
         {players.length === 0 ? (
           <EmptyState message={t.squad.empty}
             action={<Button onClick={() => setCreating(true)}><PlusIcon />{t.squad.addFirst}</Button>} />
+        ) : rows.length === 0 && !filtered ? (
+          <EmptyState message={view === 'loaned' ? t.squad.loanedEmpty : t.squad.empty} />
         ) : rows.length === 0 ? (
           <EmptyState message={t.squad.noMatch}
             action={<Button variant="outline" onClick={resetFilters}><XIcon />{t.squad.resetFilters}</Button>} />

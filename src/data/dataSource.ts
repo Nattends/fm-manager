@@ -1,10 +1,13 @@
-import type { NewPlayer, NewTactic, Player, RoleDefinition, Tactic } from '../domain/types'
+import type { Club, NewPlayer, NewTactic, Player, RoleDefinition, Tactic } from '../domain/types'
 
 /** Contenu complet d'une sauvegarde (export / import JSON). */
 export interface Backup {
   app: 'fm27-manager'
-  version: 1
+  /** 1 : un seul club (avant la v0.2), 2 : plusieurs clubs. */
+  version: 1 | 2
   exportedAt: string
+  /** Absent des sauvegardes version 1. */
+  clubs?: Club[]
   players: Player[]
   tactics: Tactic[]
   roles: RoleDefinition[] | null
@@ -16,7 +19,17 @@ export interface Backup {
  * les joueurs via la même interface.
  */
 export interface DataSource {
+  listClubs(): Promise<Club[]>
+  saveClub(club: Omit<Club, 'id'> & { id?: number }): Promise<Club>
+  /** Supprime le club avec ses joueurs et ses tactiques. */
+  deleteClub(id: number): Promise<void>
+  /** Cache des logos de club : undefined = jamais cherché, null = aucun logo trouvé. */
+  listClubLogos(): Promise<Map<string, string | null>>
+  cacheClubLogo(key: string, logo: string | null): Promise<void>
+
+  /** Joueurs de tous les clubs. */
   listPlayers(): Promise<Player[]>
+  /** `clubId` est obligatoire pour un nouveau joueur. */
   savePlayer(player: NewPlayer): Promise<Player>
   deletePlayer(id: number): Promise<void>
   /** Enregistre la photo (null = avatar inconnu) et le nom pour lequel elle a été cherchée. */
@@ -26,11 +39,12 @@ export interface DataSource {
   cachePhoto(key: string, photo: string | null, overwrite?: boolean): Promise<void>
   uncachePhoto(key: string): Promise<void>
 
+  /** Tactiques de tous les clubs. */
   listTactics(): Promise<Tactic[]>
   saveTactic(tactic: NewTactic): Promise<Tactic>
   deleteTactic(id: number): Promise<void>
 
-  /** Rôles personnalisés, ou null si l'utilisateur utilise les rôles par défaut. */
+  /** Rôles personnalisés (communs à tous les clubs), ou null pour les rôles par défaut. */
   getRoles(): Promise<RoleDefinition[] | null>
   saveRoles(roles: RoleDefinition[] | null): Promise<void>
 

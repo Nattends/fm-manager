@@ -26,6 +26,18 @@ fn migrations() -> Vec<Migration> {
       sql: include_str!("../migrations/004_photo_cache.sql"),
       kind: MigrationKind::Up,
     },
+    Migration {
+      version: 5,
+      description: "club et pret des joueurs",
+      sql: include_str!("../migrations/005_player_club_loan.sql"),
+      kind: MigrationKind::Up,
+    },
+    Migration {
+      version: 6,
+      description: "clubs geres et logos",
+      sql: include_str!("../migrations/006_clubs.sql"),
+      kind: MigrationKind::Up,
+    },
   ]
 }
 

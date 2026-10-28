@@ -103,6 +103,9 @@ export const STATUS_STYLES: Record<PlayerStatus, string> = {
   unavailable: 'bg-rose-500/15 text-rose-300 ring-rose-500/30',
 }
 
+/** Joueur prêté (hors effectif). */
+export const LOAN_STYLE = 'bg-cyan-500/15 text-cyan-300 ring-cyan-500/30'
+
 /** Bouton de poids d'attribut dans l'écran Rôles (×5 / ×3 / ×1 / ×0). */
 export function weightStyle(weight: number): string {
   if (!weight) return 'border-border text-slate-500 hover:border-slate-600 hover:text-slate-300'

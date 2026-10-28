@@ -65,6 +65,8 @@ interface DemoEntry {
   /** Attributs renseignés : tous, seulement quelques-uns (note partielle) ou aucun. */
   entry?: 'full' | 'partial' | 'none'
   note?: string
+  /** Club qui accueille le joueur prêté (hors effectif). */
+  loanedTo?: string
 }
 
 const ENTRIES: DemoEntry[] = [
@@ -100,6 +102,9 @@ const ENTRIES: DemoEntry[] = [
   { name: 'Bram de Wit', age: 24, nationality: 'Pays-Bas', foot: 'left', positions: { ST: 20 }, archetype: 'st', level: 14, status: 'rotation', stars: [3, 4] },
   { name: 'Hugo Castell', age: 20, nationality: 'Espagne', foot: 'right', positions: { ST: 17, AMR: 10 }, archetype: 'st', level: 11, status: 'prospect', stars: [2, 4.5], entry: 'none', note: 'Aucun attribut saisi : pas de note (—).' },
   { name: 'Victor Osimhen', age: 27, nationality: 'Nigeria', foot: 'right', positions: { ST: 20 }, archetype: 'st', level: 17, status: 'unavailable', stars: [4.5, 4.5], note: 'Blessé : indisponible, jamais choisi dans le XI.' },
+  // Prêtés (hors effectif)
+  { name: 'Théo Marchand', age: 19, nationality: 'France', foot: 'right', positions: { MC: 20, DM: 14 }, archetype: 'mc', level: 12, status: 'prospect', stars: [2, 4], loanedTo: 'Stade Brestois', note: 'Prêté : hors effectif et des tactiques.' },
+  { name: 'Diego Ferreira', age: 21, nationality: 'Brésil', foot: 'left', positions: { AMR: 20, ST: 14 }, archetype: 'w', level: 18, status: 'rotation', stars: [3, 4.5], loanedTo: 'Girona', note: 'Prêté : jamais aligné, malgré une très bonne note.' },
 ]
 
 /** Équipe de démo, moitié vrais joueurs (photos Transfermarkt), moitié joueurs inventés (avatar inconnu). */
@@ -117,6 +122,8 @@ export function demoSquad(): NewPlayer[] {
       name: e.name,
       age: e.age,
       nationality: e.nationality,
+      club: e.loanedTo ?? '',
+      onLoan: e.loanedTo !== undefined,
       foot: e.foot,
       positions: e.positions,
       caStars: e.stars[0],

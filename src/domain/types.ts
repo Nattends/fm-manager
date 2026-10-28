@@ -16,6 +16,12 @@ export interface Player {
   name: string
   age: number
   nationality: string
+  /** Club (partie) auquel appartient le joueur. */
+  clubId: number
+  /** Club qui accueille le joueur prêté (ignoré s'il n'est pas prêté). */
+  club: string
+  /** Prêté à un autre club : hors effectif, jamais aligné dans une tactique. */
+  onLoan: boolean
   foot: Foot
   positions: PositionFamiliarity
   /** Capacité actuelle / potentielle, en étoiles (0.5 à 5). */
@@ -33,10 +39,27 @@ export interface Player {
   photoLookup: string | null
 }
 
-export type NewPlayer = Omit<Player, 'id' | 'photo' | 'photoLookup'> &
-  Partial<Pick<Player, 'photo' | 'photoLookup'>> & { id?: number }
+export type NewPlayer = Omit<Player, 'id' | 'photo' | 'photoLookup' | 'clubId'> &
+  Partial<Pick<Player, 'photo' | 'photoLookup' | 'clubId'>> & { id?: number }
+
+/** Un club géré = une partie de FM, avec son effectif et ses tactiques. */
+export interface Club {
+  id: number
+  name: string
+}
 
 export type Duty = 'defend' | 'support' | 'attack' | 'auto'
+
+/** Phase de jeu : avec ballon (in possession) ou sans ballon (out of possession). */
+export type Phase = 'ip' | 'oop'
+
+/** Place et rôle d'un poste dans une phase de jeu. */
+export interface SlotShape {
+  row: number
+  col: number
+  roleId: string
+  duty: Duty
+}
 
 export interface RoleDefinition {
   id: string
@@ -47,19 +70,21 @@ export interface RoleDefinition {
   weights: Partial<Record<AttributeKey, number>>
 }
 
-export interface TacticSlot {
+/**
+ * Un poste de la tactique. row / col / roleId / duty décrivent la phase avec ballon ;
+ * `oop` décrit le même joueur sans ballon (autre case, autre rôle possible).
+ */
+export interface TacticSlot extends SlotShape {
   slotId: string
-  /** Case occupée sur la grille du terrain (le poste en découle, voir pitch.ts). */
-  row: number
-  col: number
-  roleId: string
-  duty: Duty
+  /** Disposition sans ballon. */
+  oop: SlotShape
   /** Joueur imposé manuellement sur ce poste (null = choix automatique). */
   lockedPlayerId: number | null
 }
 
 export interface Tactic {
   id: number
+  clubId: number
   name: string
   formation: string
   slots: TacticSlot[]
@@ -68,4 +93,4 @@ export interface Tactic {
   notes: string
 }
 
-export type NewTactic = Omit<Tactic, 'id'> & { id?: number }
+export type NewTactic = Omit<Tactic, 'id' | 'clubId'> & { id?: number; clubId?: number }

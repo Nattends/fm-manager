@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { SectionTitle } from '@/components/layout'
 import { attrColor, familiarityFill } from '@/components/styles'
@@ -16,7 +17,7 @@ import { useI18n } from '@/i18n'
 import { useStore } from '@/store'
 
 const EMPTY: NewPlayer = {
-  name: '', age: 20, nationality: '', foot: 'right', positions: {},
+  name: '', age: 20, nationality: '', club: '', onLoan: false, foot: 'right', positions: {},
   caStars: 2.5, paStars: 3, contractEnd: null, wage: null, value: null,
   status: 'rotation', notes: '', attributes: {},
 }
@@ -114,6 +115,17 @@ export function PlayerForm({ player, onClose, onSaved }: { player?: Player; onCl
                     <Field label={t.player.pa} title={t.player.starsHint}>
                       <StarSelect value={draft.paStars} onChange={(v) => set('paStars', v)} />
                     </Field>
+                    <Field label={t.player.onLoan} title={t.player.onLoanHint} className="col-span-2">
+                      <label className="flex h-9 items-center gap-2 text-[13px] text-slate-300">
+                        <Switch checked={draft.onLoan} onCheckedChange={(v) => set('onLoan', v)} />
+                        {t.player.onLoanHint}
+                      </label>
+                    </Field>
+                    {draft.onLoan && (
+                      <Field label={t.player.loanClub} className="col-span-2">
+                        <Input value={draft.club} placeholder={t.clubs.namePlaceholder} onChange={(e) => set('club', e.target.value)} />
+                      </Field>
+                    )}
                   </div>
                 </section>
 
