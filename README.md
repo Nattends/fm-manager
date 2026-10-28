@@ -28,7 +28,8 @@ La saisie est **manuelle** pour l'instant (l'export Ctrl+P n'existe plus dans FM
 - **Avec ballon / sans ballon** : chaque poste a sa case et son rôle dans les deux phases (bouton pour recopier la phase avec ballon), et une vue **Les deux** (par défaut) affiche les deux terrains côte à côte. Le meilleur XI maximise la moyenne des deux notes.
 - **Demi-espaces** : en plus des 5 couloirs de FM, une carte peut se placer entre deux couloirs (poste axial de la ligne), tant qu'elle ne chevauche pas une voisine.
 - 8 formations prédéfinies, ou formation libre en **déplaçant les cartes de poste** sur la grille du terrain (6 lignes × 9 colonnes : 5 couloirs et 4 demi-espaces).
-- **Meilleur XI automatique** par affectation optimale (algorithme hongrois) qui maximise la somme des notes (moyenne avec / sans ballon). Joueurs verrouillés, écartés ou indisponibles respectés.
+- Terrain **vide par défaut** : on place les joueurs à la main, ou avec **Combler les postes vides** (meilleurs joueurs disponibles sur les postes libres, sans toucher aux autres) et **Meilleur XI** (tout l'effectif remplacé par la meilleure composition). Affectation optimale par algorithme hongrois sur la moyenne des notes avec / sans ballon ; joueurs écartés et indisponibles respectés.
+- Choix du rôle d'un poste avec la **note du joueur placé pour chaque rôle**, triés de la meilleure à la moins bonne.
 - Glisser-déposer des joueurs : un remplaçant déposé sur un titulaire le **remplace** (le titulaire sort du XI sans chambouler les autres postes), deux titulaires s'échangent, mise à l'écart ; doublures par poste.
 - **Comparaison au survol** : en glissant un joueur sur un poste occupé, une fiche compare le titulaire et l'arrivant (notes avec / sans ballon, note globale, attributs clés du poste, écart).
 - Cartes colorées par ligne : photo, note, familiarité au poste, rôle avec recherche, devoir, verrou, première doublure.

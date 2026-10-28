@@ -4,7 +4,7 @@ import { DEFAULT_ROLES, DEFAULT_ROLE_BY_POSITION, isRoleList } from './defaultRo
 import { FORMATIONS, getFormation } from './formations'
 import { hungarianMax } from './hungarian'
 import {
-  benchPlayer, canPlace, computeLineup, keyAttributesAt, rateAtSlot, copyInPossession, defaultTacticSlots, layoutName, mergePhase, moveSlot, normalizeTacticSlots,
+  bestEleven, benchPlayer, canPlace, clearEleven, computeLineup, fillEmptySlots, keyAttributesAt, rateAtSlot, copyInPossession, defaultTacticSlots, layoutName, mergePhase, moveSlot, normalizeTacticSlots,
   patchShape, phaseSlots, placePlayer, resolveRole, summarizeLineup, widenLegacyGrid,
 } from './lineup'
 import { PITCH_COLS, PITCH_ROWS, formationName, positionAt } from './pitch'
@@ -314,12 +314,12 @@ describe('computeLineup', () => {
   })
 
   it('glisser un remplaçant sur un titulaire le remplace : le titulaire sort du XI', () => {
-    const bu = squad.find((p) => p.name === 'BU')!
     const bu2 = squad.find((p) => p.name === 'BU2')!
-    const lineup = computeLineup(defaultTacticSlots(f), squad, DEFAULT_ROLES, [bu2.id])
-    const a = placePlayer(lineup, [bu2.id], bu2.id, 'st')
-    expect(a.excludedPlayerIds).toEqual([bu.id])
-    const after = computeLineup(a.slots, squad, DEFAULT_ROLES, a.excludedPlayerIds)
+    const placed = fillEmptySlots(defaultTacticSlots(f), squad, DEFAULT_ROLES, [])
+    const lineup = computeLineup(placed, squad, DEFAULT_ROLES, [], 'ip', false)
+    const a = placePlayer(lineup, [], bu2.id, 'st')
+    expect(a.excludedPlayerIds).toEqual([])
+    const after = computeLineup(a.slots, squad, DEFAULT_ROLES, a.excludedPlayerIds, 'ip', false)
     expect(after.slots.find((s) => s.slot.id === 'st')!.starter?.player.name).toBe('BU2')
     expect(after.slots.some((s) => s.starter?.player.name === 'BU')).toBe(false)
     // Les autres postes ne bougent pas.
@@ -338,6 +338,24 @@ describe('computeLineup', () => {
     const keys = keyAttributesAt(st(ip), st(oop))
     expect(keys).toHaveLength(6)
     expect(keys).toContain('finishing')
+  })
+
+  it('par défaut le terrain est vide ; on comble les postes vides ou on prend le meilleur XI', () => {
+    const empty = computeLineup(defaultTacticSlots(f), squad, DEFAULT_ROLES, [], 'ip', false)
+    expect(empty.slots.every((s) => s.starter === null)).toBe(true)
+    // Un seul joueur placé : les autres postes sont comblés sans le déplacer.
+    const bu2 = squad.find((p) => p.name === 'BU2')!
+    const one = defaultTacticSlots(f).map((s) => (s.slotId === 'gk' ? { ...s, lockedPlayerId: bu2.id } : s))
+    const filled = fillEmptySlots(one, squad, DEFAULT_ROLES, [])
+    expect(filled.find((s) => s.slotId === 'gk')!.lockedPlayerId).toBe(bu2.id)
+    expect(filled.every((s) => s.lockedPlayerId !== null)).toBe(true)
+    const manual = computeLineup(filled, squad, DEFAULT_ROLES, [], 'ip', false)
+    expect(manual.slots.find((s) => s.slot.id === 'st')!.starter?.player.name).toBe('BU')
+    // Meilleur XI : le gardien retrouve sa place.
+    const best = bestEleven(filled, squad, DEFAULT_ROLES)
+    const bestLineup = computeLineup(best.slots, squad, DEFAULT_ROLES, best.excludedPlayerIds, 'ip', false)
+    expect(bestLineup.slots.find((s) => s.slot.id === 'gk')!.starter?.player.name).toBe('Gardien')
+    expect(clearEleven(best.slots).every((s) => s.lockedPlayerId === null)).toBe(true)
   })
 
   it('échanger deux titulaires n\'écarte personne', () => {

@@ -4,26 +4,40 @@ import { cn } from '@/lib/utils'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import type { Position } from '@/domain/positions'
-import type { RoleDefinition } from '@/domain/types'
+import { rateRole, type RoleRating } from '@/domain/rating'
+import type { Player, RoleDefinition } from '@/domain/types'
+import { RatingBadge } from '@/components/ui'
 import { useI18n } from '@/i18n'
 
 /**
  * Choix d'un rôle avec recherche : les rôles prévus pour le poste d'abord, puis tous les autres
  * (avec leurs postes d'origine). Remplace le menu déroulant natif, illisible avec ~95 rôles.
+ * Avec un joueur, chaque rôle affiche sa note à ce poste et les rôles du poste sont triés
+ * de la meilleure à la moins bonne note.
  */
-export function RolePicker({ roles, value, current, position, onChange, className }: {
+export function RolePicker({ roles, value, current, position, player, onChange, className }: {
   roles: RoleDefinition[]
   value: string
   /** Rôle affiché (résolu), utile si l'identifiant enregistré n'existe plus. */
   current: RoleDefinition
   position: Position
+  /** Joueur placé sur le poste : sa note pour chaque rôle. */
+  player?: Player | null
   onChange: (roleId: string) => void
   className?: string
 }) {
   const { t, roleName } = useI18n()
   const [open, setOpen] = useState(false)
+  // Notes calculées seulement à l'ouverture (jusqu'à ~95 rôles).
+  const ratings = new Map<string, RoleRating>()
+  if (open && player) for (const r of roles) ratings.set(r.id, rateRole(player, r, position))
+  const byRating = (a: RoleDefinition, b: RoleDefinition) => (ratings.get(b.id)?.score ?? 0) - (ratings.get(a.id)?.score ?? 0)
   const forPosition = roles.filter((r) => r.positions.includes(position))
   const others = roles.filter((r) => !r.positions.includes(position))
+  if (player) {
+    forPosition.sort(byRating)
+    others.sort(byRating)
+  }
   const pick = (id: string) => {
     onChange(id)
     setOpen(false)
@@ -37,6 +51,7 @@ export function RolePicker({ roles, value, current, position, onChange, classNam
           {r.positions.map((p) => t.positions[p]).join('/')}
         </span>
       )}
+      {ratings.has(r.id) && <RatingBadge rating={ratings.get(r.id)!} size="sm" className={withPositions ? 'ml-2' : 'ml-auto'} />}
     </CommandItem>
   )
 
@@ -50,7 +65,7 @@ export function RolePicker({ roles, value, current, position, onChange, classNam
           <ChevronsUpDownIcon className="size-3 shrink-0 opacity-50" />
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-72 p-0" align="start">
+      <PopoverContent className={cn('p-0', player ? 'w-80' : 'w-72')} align="start">
         <Command>
           <CommandInput placeholder={t.tactic.searchRole} />
           <CommandList className="max-h-80">

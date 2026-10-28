@@ -191,7 +191,8 @@ export function isAvailable(p: Player): boolean {
  * Calcule le meilleur XI : les joueurs verrouillés sont placés d'abord,
  * puis les postes restants sont pourvus par affectation optimale (algorithme hongrois)
  * en maximisant la somme des notes globales (moyenne des notes avec et sans ballon).
- * `phase` choisit la disposition et la note affichées.
+ * `phase` choisit la disposition et la note affichées. Avec `autoFill` à faux, seuls les
+ * joueurs placés (verrouillés) sont titulaires : les autres postes restent vides.
  */
 export function computeLineup(
   tacticSlots: TacticSlot[],
@@ -199,6 +200,7 @@ export function computeLineup(
   roles: RoleDefinition[],
   excludedPlayerIds: number[] = [],
   phase: Phase = 'ip',
+  autoFill = true,
 ): Lineup {
   const available = players.filter(isAvailable)
   const byId = new Map(available.map((p) => [p.id, p]))
@@ -239,7 +241,7 @@ export function computeLineup(
   const freeSlots = entries.filter((e) => !lockedSlots.has(e.tacticSlot.slotId))
   const pool = available.filter((p) => !used.has(p.id) && !excluded.has(p.id))
 
-  if (freeSlots.length > 0 && pool.length > 0) {
+  if (autoFill && freeSlots.length > 0 && pool.length > 0) {
     const ratings = freeSlots.map((e) => pool.map((p) => rate(p, e)))
     // Colonnes fictives (score 0) si moins de joueurs que de postes : poste laissé vide.
     const padding = Math.max(0, freeSlots.length - pool.length)
@@ -286,8 +288,7 @@ export function computeLineup(
 /**
  * Place un joueur sur un poste (verrouillé). S'il venait d'un autre poste du XI,
  * le titulaire du poste visé prend sa place (échange). S'il venait de l'effectif,
- * il remplace le titulaire, qui sort du XI (écarté) au lieu d'être replacé
- * automatiquement ailleurs, ce qui chamboulerait les autres postes.
+ * il remplace le titulaire, qui sort du XI.
  */
 export function placePlayer(lineup: Lineup, excludedPlayerIds: number[], playerId: number, targetSlotId: string): Assignment {
   const source = lineup.slots.find((s) => s.starter?.player.id === playerId)?.slot.id
@@ -300,9 +301,26 @@ export function placePlayer(lineup: Lineup, excludedPlayerIds: number[], playerI
     if (s.lockedPlayerId === playerId) return { ...s, lockedPlayerId: null }
     return s
   })
-  const excluded = excludedPlayerIds.filter((id) => id !== playerId)
-  if (!source && displaced !== null && !excluded.includes(displaced)) excluded.push(displaced)
-  return { slots, excludedPlayerIds: excluded }
+  return { slots, excludedPlayerIds: excludedPlayerIds.filter((id) => id !== playerId) }
+}
+
+/**
+ * Comble les postes vides avec les meilleurs joueurs disponibles (non écartés), sans
+ * toucher aux joueurs déjà placés. Les joueurs choisis sont placés (verrouillés).
+ */
+export function fillEmptySlots(slots: TacticSlot[], players: Player[], roles: RoleDefinition[], excludedPlayerIds: number[]): TacticSlot[] {
+  const lineup = computeLineup(slots, players, roles, excludedPlayerIds)
+  return slots.map((s) => ({ ...s, lockedPlayerId: lineup.slots.find((l) => l.tacticSlot.slotId === s.slotId)?.starter?.player.id ?? null }))
+}
+
+/** Remplace tout le XI par le meilleur effectif possible (placements et joueurs écartés oubliés). */
+export function bestEleven(slots: TacticSlot[], players: Player[], roles: RoleDefinition[]): Assignment {
+  return { slots: fillEmptySlots(clearEleven(slots), players, roles, []), excludedPlayerIds: [] }
+}
+
+/** Retire tous les joueurs du terrain. */
+export function clearEleven(slots: TacticSlot[]): TacticSlot[] {
+  return slots.map((s) => ({ ...s, lockedPlayerId: null }))
 }
 
 /** Note d'un joueur sur un poste de la tactique, dans les deux phases. */
@@ -330,11 +348,14 @@ export function keyAttributesAt(ip: LineupSlot, oop: LineupSlot, count = 6): Att
   return [...total.entries()].sort((a, b) => b[1] - a[1]).slice(0, count).map(([a]) => a)
 }
 
-/** Retire un joueur du XI : il ne sera plus choisi automatiquement pour cette tactique. */
-export function benchPlayer(lineup: Lineup, excludedPlayerIds: number[], playerId: number): Assignment {
+/**
+ * Retire un joueur du XI. Avec `exclude`, il est aussi écarté : il ne sera plus choisi
+ * quand on comble les postes vides.
+ */
+export function benchPlayer(lineup: Lineup, excludedPlayerIds: number[], playerId: number, exclude = true): Assignment {
   return {
     slots: lineup.slots.map(({ tacticSlot: s }) => (s.lockedPlayerId === playerId ? { ...s, lockedPlayerId: null } : s)),
-    excludedPlayerIds: excludedPlayerIds.includes(playerId) ? excludedPlayerIds : [...excludedPlayerIds, playerId],
+    excludedPlayerIds: !exclude || excludedPlayerIds.includes(playerId) ? excludedPlayerIds : [...excludedPlayerIds, playerId],
   }
 }
 

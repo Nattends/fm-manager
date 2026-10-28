@@ -3,10 +3,11 @@ import {
   type DragEndEvent, type DragOverEvent, type DragStartEvent,
 } from '@dnd-kit/core'
 import {
-  ColumnsIcon, CopyIcon, GripVerticalIcon, LockIcon, LockOpenIcon, Maximize2Icon, Minimize2Icon, PanelRightCloseIcon, PanelRightOpenIcon,
-  RotateCcwIcon, SaveIcon, Trash2Icon, Undo2Icon,
+  ColumnsIcon, CopyIcon, EraserIcon, GripVerticalIcon, Maximize2Icon, Minimize2Icon, PanelRightCloseIcon, PanelRightOpenIcon,
+  SaveIcon, SparklesIcon, Trash2Icon, Undo2Icon, WandIcon, XIcon,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { askConfirm } from '@/lib/confirm'
 import { cn } from '@/lib/utils'
 import { useIsPortrait } from '@/lib/windowMode'
@@ -25,7 +26,7 @@ import { PlayerAvatar, RatingBadge } from '@/components/ui'
 import { LINE_COLORS, attrColor, lineColorOf, scoreColor, scoreRing, scoreText } from '@/components/styles'
 import { CUSTOM_FORMATION_ID, FORMATIONS, getFormation, type Formation } from '@/domain/formations'
 import {
-  benchPlayer, canPlace, computeLineup, copyInPossession, keyAttributesAt, rateAtSlot, defaultTacticSlots, isAvailable, layoutName, mergePhase, moveSlot,
+  bestEleven, benchPlayer, canPlace, clearEleven, computeLineup, fillEmptySlots, copyInPossession, keyAttributesAt, rateAtSlot, defaultTacticSlots, isAvailable, layoutName, mergePhase, moveSlot,
   patchShape, phaseSlots, placePlayer, summarizeLineup,
   type Assignment, type Lineup, type LineupSlot, type LineupSummary, type PitchLine,
 } from '@/domain/lineup'
@@ -144,8 +145,9 @@ export function TacticPage() {
   const view = views[phase]
   const layout = layoutName(view)
   const lineups = useMemo(() => ({
-    ip: computeLineup(draft.slots, players, roles, draft.excludedPlayerIds, 'ip'),
-    oop: computeLineup(draft.slots, players, roles, draft.excludedPlayerIds, 'oop'),
+    // Seuls les joueurs placés sont titulaires : les postes vides se comblent avec les boutons de la barre.
+    ip: computeLineup(draft.slots, players, roles, draft.excludedPlayerIds, 'ip', false),
+    oop: computeLineup(draft.slots, players, roles, draft.excludedPlayerIds, 'oop', false),
   }), [draft.slots, draft.excludedPlayerIds, players, roles])
   const lineup = lineups[phase]
   const summary = summarizeLineup(lineup)
@@ -227,7 +229,10 @@ export function TacticPage() {
     setDirty(false)
   }
 
-  const resetXi = () => update({ slots: draft.slots.map((s) => ({ ...s, lockedPlayerId: null })), excludedPlayerIds: [] })
+  const clearXi = () => update({ slots: clearEleven(draft.slots), excludedPlayerIds: [] })
+  const fillXi = () => update({ slots: fillEmptySlots(draft.slots, players, roles, draft.excludedPlayerIds) })
+  const bestXi = () => update(bestEleven(draft.slots, players, roles))
+  const emptySlots = lineup.slots.filter((s) => !s.starter).length
   const showPanel = !big || panelOpen
 
   return (
@@ -289,7 +294,9 @@ export function TacticPage() {
               <CopyIcon />{t.tactic.copyFromIp}
             </Button>
           )}
-          <Button variant="ghost" size="sm" onClick={resetXi} title={t.tactic.resetTitle}><RotateCcwIcon />{t.tactic.reset}</Button>
+          <Button variant="outline" size="sm" onClick={fillXi} disabled={emptySlots === 0} title={t.tactic.fillTitle}><WandIcon />{t.tactic.fill}</Button>
+          <Button variant="outline" size="sm" onClick={bestXi} title={t.tactic.bestTitle}><SparklesIcon />{t.tactic.best}</Button>
+          <Button variant="ghost" size="sm" onClick={clearXi} title={t.tactic.resetTitle}><EraserIcon />{t.tactic.reset}</Button>
         </PageHeader>
 
         <div className={cn('relative flex min-h-0 flex-1 gap-4 overflow-hidden', big ? 'p-3' : 'p-4', stacked && 'flex-col')}>
@@ -303,7 +310,7 @@ export function TacticPage() {
                 acceptsPlayers={dragged?.kind !== 'card'}
                 onRole={(slotId, roleId) => updateShape(ph, slotId, { roleId })}
                 onDuty={(slotId, duty) => updateShape(ph, slotId, { duty })}
-                onToggleLock={(s) => updateSlot(s.slot.id, { lockedPlayerId: s.locked ? null : (s.starter?.player.id ?? null) })}
+                onRemove={(s) => updateSlot(s.slot.id, { lockedPlayerId: null })}
                 onOpen={setOpenId} />
             ))}
           </div>
@@ -345,19 +352,9 @@ export function TacticPage() {
 
       <DragOverlay dropAnimation={null}>
         {dragged?.kind === 'player' && (
-          <div className="pointer-events-none w-max">
-            <div className="flex w-max items-center gap-2 rounded-lg border border-amber-400/80 bg-popover px-2.5 py-1.5 text-sm font-semibold shadow-2xl">
-              <PlayerAvatar player={dragged.player} size={28} />
-              {dragged.player.name}
-            </div>
-            {overSlot && (() => {
-              const shown = lineups[overSlot.phase].slots.find((s) => s.slot.id === overSlot.slotId)
-              const ip = lineups.ip.slots.find((s) => s.slot.id === overSlot.slotId)
-              const oop = lineups.oop.slots.find((s) => s.slot.id === overSlot.slotId)
-              if (!shown?.starter || !ip || !oop || shown.starter.player.id === dragged.player.id) return null
-              return <ReplaceCompare phase={overSlot.phase} shown={shown} ip={ip} oop={oop} incoming={dragged.player}
-                swap={starterIds.has(dragged.player.id)} />
-            })()}
+          <div className="pointer-events-none flex w-max items-center gap-2 rounded-lg border border-amber-400/80 bg-popover px-2.5 py-1.5 text-sm font-semibold shadow-2xl">
+            <PlayerAvatar player={dragged.player} size={28} />
+            {dragged.player.name}
           </div>
         )}
         {dragged?.kind === 'card' && (
@@ -373,12 +370,59 @@ export function TacticPage() {
           </div>
         )}
       </DragOverlay>
+
+      {/* Comparaison à côté de la carte survolée, toujours entièrement dans la fenêtre. */}
+      {dragged?.kind === 'player' && overSlot && (() => {
+        const shown = lineups[overSlot.phase].slots.find((s) => s.slot.id === overSlot.slotId)
+        const ip = lineups.ip.slots.find((s) => s.slot.id === overSlot.slotId)
+        const oop = lineups.oop.slots.find((s) => s.slot.id === overSlot.slotId)
+        if (!shown?.starter || !ip || !oop || shown.starter.player.id === dragged.player.id) return null
+        return (
+          <FloatingNextTo anchor={`${overSlot.phase}:${overSlot.slotId}`}>
+            <ReplaceCompare phase={overSlot.phase} shown={shown} ip={ip} oop={oop} incoming={dragged.player}
+              swap={starterIds.has(dragged.player.id)} />
+          </FloatingNextTo>
+        )
+      })()}
     </DndContext>
   )
 }
 
+const FLOAT_GAP = 12
+const FLOAT_MARGIN = 8
+
 /**
- * Comparaison affichée sous le joueur glissé quand il survole un poste occupé :
+ * Panneau flottant placé à côté de la carte de poste `anchor` (attribut data-slot) :
+ * à droite s'il y a la place, sinon à gauche, et décalé pour rester entièrement visible.
+ */
+function FloatingNextTo({ anchor, children }: { anchor: string; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null)
+  useLayoutEffect(() => {
+    const target = document.querySelector(`[data-slot="${anchor}"]`)
+    const el = ref.current
+    if (!target || !el) return
+    const r = target.getBoundingClientRect()
+    const w = el.offsetWidth
+    const h = el.offsetHeight
+    const vw = window.innerWidth
+    const vh = window.innerHeight
+    const clamp = (v: number, max: number) => Math.max(FLOAT_MARGIN, Math.min(v, max - FLOAT_MARGIN))
+    const right = r.right + FLOAT_GAP
+    const left = right + w <= vw - FLOAT_MARGIN ? right : r.left - FLOAT_GAP - w
+    setPos({ left: clamp(left, vw - w), top: clamp(r.top + r.height / 2 - h / 2, vh - h) })
+  }, [anchor])
+  return createPortal(
+    <div ref={ref} className="pointer-events-none fixed z-[60]"
+      style={pos ? { left: pos.left, top: pos.top } : { left: 0, top: 0, visibility: 'hidden' }}>
+      {children}
+    </div>,
+    document.body,
+  )
+}
+
+/**
+ * Comparaison affichée à côté du poste survolé par le joueur glissé quand il est occupé :
  * notes avec et sans ballon, note globale et attributs clés du poste, titulaire contre arrivant.
  */
 function ReplaceCompare({ phase, shown, ip, oop, incoming, swap }: {
@@ -402,7 +446,7 @@ function ReplaceCompare({ phase, shown, ip, oop, incoming, swap }: {
   const better = (x: number, y: number) => (x > y ? 'font-bold text-emerald-300' : x < y ? 'text-slate-400' : 'text-slate-200')
 
   return (
-    <div className="mt-2 w-[22rem] overflow-hidden rounded-xl border border-border bg-popover text-[12px] shadow-2xl">
+    <div className="w-[22rem] overflow-hidden rounded-xl border border-border bg-popover text-[12px] shadow-2xl">
       <div className="flex items-center gap-2 border-b border-border bg-secondary/40 px-3 py-2">
         <PositionChip position={position} />
         <span className="min-w-0 flex-1 truncate font-semibold text-slate-100">{roleName(shown.role)}</span>
@@ -591,7 +635,7 @@ function BackupsList({ lineup, onOpen }: { lineup: Lineup; onOpen: (id: number) 
 }
 
 /** Un terrain (une phase de jeu) : marquages, cartes de poste et cases de dépôt pendant un déplacement. */
-function PitchView({ phase, lineup, view, roles, starterIds, big, rotated, compact, label, movingId, acceptsPlayers, onRole, onDuty, onToggleLock, onOpen }: {
+function PitchView({ phase, lineup, view, roles, starterIds, big, rotated, compact, label, movingId, acceptsPlayers, onRole, onDuty, onRemove, onOpen }: {
   phase: Phase
   lineup: Lineup
   /** Postes vus dans cette phase. */
@@ -609,7 +653,7 @@ function PitchView({ phase, lineup, view, roles, starterIds, big, rotated, compa
   acceptsPlayers: boolean
   onRole: (slotId: string, roleId: string) => void
   onDuty: (slotId: string, duty: Duty) => void
-  onToggleLock: (slot: LineupSlot) => void
+  onRemove: (slot: LineupSlot) => void
   onOpen: (playerId: number) => void
 }) {
   // Taille de la zone du terrain, pour adapter ses proportions en vue double.
@@ -649,7 +693,7 @@ function PitchView({ phase, lineup, view, roles, starterIds, big, rotated, compa
               acceptsPlayers={acceptsPlayers}
               onRole={(roleId) => onRole(s.slot.id, roleId)}
               onDuty={(duty) => onDuty(s.slot.id, duty)}
-              onToggleLock={() => onToggleLock(s)}
+              onRemove={() => onRemove(s)}
               onOpen={onOpen} />
           ))}
         </div>
@@ -706,7 +750,7 @@ function DraggablePlayer({ id, playerId, children }: { id: string; playerId: num
   )
 }
 
-function SlotCard({ phase, slot, roles, starterIds, big, rotated, compact, acceptsPlayers, onRole, onDuty, onToggleLock, onOpen }: {
+function SlotCard({ phase, slot, roles, starterIds, big, rotated, compact, acceptsPlayers, onRole, onDuty, onRemove, onOpen }: {
   phase: Phase
   slot: LineupSlot
   roles: RoleDefinition[]
@@ -721,7 +765,8 @@ function SlotCard({ phase, slot, roles, starterIds, big, rotated, compact, accep
   acceptsPlayers: boolean
   onRole: (id: string) => void
   onDuty: (d: Duty) => void
-  onToggleLock: () => void
+  /** Retire le titulaire du poste (sans l'écarter). */
+  onRemove: () => void
   onOpen: (playerId: number) => void
 }) {
   const { t } = useI18n()
@@ -750,11 +795,11 @@ function SlotCard({ phase, slot, roles, starterIds, big, rotated, compact, accep
   const halfSpace = isHalfSpace(slot.slot.col)
 
   return (
-    <div ref={setNodeRef} style={pitchPoint(slot.slot.x, slot.slot.y, rotated)}
+    <div ref={setNodeRef} data-slot={`:`} style={pitchPoint(slot.slot.x, slot.slot.y, rotated)}
       className={cn(
         'absolute z-10 -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-lg border bg-linear-to-b from-slate-900/95 to-slate-950/95 shadow-xl shadow-black/40 backdrop-blur-sm transition',
         s.width,
-        isOver ? 'scale-105 border-amber-300 ring-2 ring-amber-300/60' : slot.locked ? 'border-amber-400/70' : 'border-white/10',
+        isOver ? 'scale-105 border-amber-300 ring-2 ring-amber-300/60' : 'border-white/10',
         cardDragging && 'opacity-30',
       )}>
       {/* Barre colorée selon la ligne : poste (poignée de déplacement), rôle, devoir */}
@@ -766,7 +811,7 @@ function SlotCard({ phase, slot, roles, starterIds, big, rotated, compact, accep
           {t.positions[position]}
           {halfSpace && <span className="ml-0.5 font-normal opacity-75" title={t.tactic.halfSpace}>{t.tactic.halfSpaceShort}</span>}
         </span>
-        <RolePicker roles={roles} value={slot.shape.roleId} current={slot.role} position={position} onChange={onRole}
+        <RolePicker roles={roles} value={slot.shape.roleId} current={slot.role} position={position} player={slot.starter?.player} onChange={onRole}
           className="h-5 flex-1 font-medium text-current hover:bg-black/20" />
         <Select value={slot.shape.duty} onValueChange={(v) => onDuty(v as Duty)}>
           <SelectTrigger size="sm" title={t.tactic.duty}
@@ -798,13 +843,13 @@ function SlotCard({ phase, slot, roles, starterIds, big, rotated, compact, accep
             </div>
             <Tooltip>
               <TooltipTrigger asChild>
-                <button onClick={(e) => { e.stopPropagation(); onToggleLock() }} onPointerDown={(e) => e.stopPropagation()}
-                  aria-label={slot.locked ? t.tactic.unlock : t.tactic.lock}
-                  className={cn('absolute top-1.5 right-1.5 rounded p-0.5 transition-colors', slot.locked ? 'text-amber-400' : 'text-slate-600 hover:text-slate-200')}>
-                  {slot.locked ? <LockIcon className="size-3.5" /> : <LockOpenIcon className="size-3.5" />}
+                <button onClick={(e) => { e.stopPropagation(); onRemove() }} onPointerDown={(e) => e.stopPropagation()}
+                  aria-label={t.tactic.removeFromXi}
+                  className="absolute top-1.5 right-1.5 rounded p-0.5 text-slate-500 transition-colors hover:bg-rose-500/20 hover:text-rose-300">
+                  <XIcon className="size-3.5" />
                 </button>
               </TooltipTrigger>
-              <TooltipContent>{slot.locked ? t.tactic.unlock : t.tactic.lock}</TooltipContent>
+              <TooltipContent>{t.tactic.removeFromXi}</TooltipContent>
             </Tooltip>
           </div>
         </DraggablePlayer>
