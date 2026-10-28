@@ -14,7 +14,7 @@ The PATH in Claude Code sessions can be stale on this machine. Prefix commands w
 - Full build + update of the installed app (what the user launches, `%LOCALAPPDATA%\FM27 Manager\fm27-manager.exe`):
   1. Stop the installed app (allowed without asking). The dev exe has the same process name: only kill the one under `%LOCALAPPDATA%\FM27 Manager`.
   2. `npx tauri build`
-  3. `Start-Process "src-tauri\target\release\bundle\nsis\FM27 Manager_0.3.1_x64-setup.exe" -ArgumentList '/S' -Wait`
+  3. `Start-Process "src-tauri\target\release\bundle\nsis\FM27 Manager_0.3.2_x64-setup.exe" -ArgumentList '/S' -Wait`
   4. Check the exe's LastWriteTime.
   Do this when dev mode isn't running, or when the user asks for it.
 - Never take screenshots or steal focus: the user is often playing on the same machine.

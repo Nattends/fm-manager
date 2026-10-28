@@ -6,7 +6,7 @@ import {
   ColumnsIcon, CopyIcon, GripVerticalIcon, LockIcon, LockOpenIcon, Maximize2Icon, Minimize2Icon, PanelRightCloseIcon, PanelRightOpenIcon,
   RotateCcwIcon, SaveIcon, Trash2Icon, Undo2Icon,
 } from 'lucide-react'
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { askConfirm } from '@/lib/confirm'
 import { cn } from '@/lib/utils'
 import { useIsPortrait } from '@/lib/windowMode'
@@ -59,6 +59,11 @@ const DUTIES: Duty[] = ['auto', 'defend', 'support', 'attack']
 const PITCH_RATIO = 1.25
 /** Grande vue : terrain horizontal (attaque vers la droite), proportions d'un vrai terrain. */
 const LANDSCAPE_RATIO = 1.55
+/**
+ * Deux terrains côte à côte : chaque terrain prend la forme de sa zone (plus haut que large)
+ * au lieu de garder PITCH_RATIO, ce qui laissait de grands vides au-dessus et en dessous.
+ */
+const COMPACT_MIN_RATIO = 0.7
 const BIG_VIEW_KEY = 'tactic.bigView'
 
 /**
@@ -487,7 +492,20 @@ function PitchView({ phase, lineup, view, roles, big, rotated, compact, label, m
   onToggleLock: (slot: LineupSlot) => void
   onOpen: (playerId: number) => void
 }) {
-  const ratio = rotated ? LANDSCAPE_RATIO : PITCH_RATIO
+  // Taille de la zone du terrain, pour adapter ses proportions en vue double.
+  const areaRef = useRef<HTMLDivElement>(null)
+  const [area, setArea] = useState<{ w: number; h: number } | null>(null)
+  useEffect(() => {
+    const el = areaRef.current
+    if (!el || !compact) return
+    const ro = new ResizeObserver(([entry]) => setArea({ w: entry.contentRect.width, h: entry.contentRect.height }))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [compact])
+  const fitted = compact && area && area.h > 0
+    ? Math.min(PITCH_RATIO, Math.max(COMPACT_MIN_RATIO, area.w / area.h))
+    : PITCH_RATIO
+  const ratio = rotated ? LANDSCAPE_RATIO : fitted
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
       {label && (
@@ -497,14 +515,14 @@ function PitchView({ phase, lineup, view, roles, big, rotated, compact, label, m
         </div>
       )}
       {/* Le terrain occupe la plus grande place possible en gardant ses proportions. */}
-      <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center" style={{ containerType: 'size' }}>
+      <div ref={areaRef} className="flex min-h-0 min-w-0 flex-1 items-center justify-center" style={{ containerType: 'size' }}>
         <div className="relative overflow-hidden rounded-xl shadow-2xl ring-1 ring-emerald-800"
           style={{
             width: `min(100cqw, ${ratio * 100}cqh)`,
             aspectRatio: `${ratio}`,
             background: `radial-gradient(ellipse at center, transparent 50%, rgba(0, 0, 0, 0.35)), repeating-linear-gradient(${rotated ? 90 : 180}deg, #166534 0 ${rotated ? 6.25 : 10}%, #15803d ${rotated ? 6.25 : 10}% ${rotated ? 12.5 : 20}%)`,
           }}>
-          <PitchLines big={rotated} />
+          <PitchLines big={rotated} ratio={ratio} />
           {movingId && <CellGrid phase={phase} slots={view} movingId={movingId} big={rotated} />}
           {lineup.slots.map((s) => (
             <SlotCard key={s.slot.id} phase={phase} slot={s} roles={roles} big={big} rotated={rotated} compact={compact}
@@ -684,9 +702,9 @@ function SlotCard({ phase, slot, roles, big, rotated, compact, acceptsPlayers, o
   )
 }
 /** Marquages du terrain, dans les proportions du terrain affiché (vertical ou horizontal en grande vue). */
-function PitchLines({ big }: { big: boolean }) {
+function PitchLines({ big, ratio }: { big: boolean; ratio: number }) {
   if (big) return <LandscapeLines />
-  const w = PITCH_RATIO * 100
+  const w = ratio * 100
   const mid = w / 2
   return (
     <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox={`0 0 ${w} 100`}>
