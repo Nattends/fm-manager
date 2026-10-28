@@ -1,0 +1,258 @@
+import Database from '@tauri-apps/plugin-sql'
+import { isAttributeKey } from '../domain/attributes'
+import { isRoleList } from '../domain/defaultRoles'
+import { normalizeTacticSlots } from '../domain/lineup'
+import type { Attributes, NewPlayer, NewTactic, Player, RoleDefinition, Tactic } from '../domain/types'
+import type { Backup, DataSource } from './dataSource'
+
+const DB_URL = 'sqlite:fm27.db'
+/** Message d'erreur (traduit par l'interface) quand un fichier importé n'est pas une sauvegarde. */
+export const INVALID_BACKUP = 'INVALID_BACKUP'
+
+interface PlayerRow {
+  id: number
+  name: string
+  age: number
+  nationality: string
+  foot: Player['foot']
+  positions: string
+  ca_stars: number
+  pa_stars: number
+  contract_end: string | null
+  wage: number | null
+  value: number | null
+  status: Player['status']
+  notes: string
+  photo: string | null
+  photo_lookup: string | null
+}
+
+interface AttributeRow {
+  player_id: number
+  attr: string
+  value: number
+}
+
+interface TacticRow {
+  id: number
+  name: string
+  formation: string
+  slots: string
+  excluded: string
+  notes: string
+}
+
+let dbPromise: Promise<Database> | null = null
+function db(): Promise<Database> {
+  dbPromise ??= Database.load(DB_URL)
+  return dbPromise
+}
+
+function rowToPlayer(row: PlayerRow, attributes: Attributes): Player {
+  return {
+    id: row.id,
+    name: row.name,
+    age: row.age,
+    nationality: row.nationality,
+    foot: row.foot,
+    positions: JSON.parse(row.positions),
+    caStars: row.ca_stars,
+    paStars: row.pa_stars,
+    contractEnd: row.contract_end,
+    wage: row.wage,
+    value: row.value,
+    status: row.status,
+    notes: row.notes,
+    attributes,
+    photo: row.photo,
+    photoLookup: row.photo_lookup,
+  }
+}
+
+export class ManualSource implements DataSource {
+  async listPlayers(): Promise<Player[]> {
+    const d = await db()
+    const rows = await d.select<PlayerRow[]>('SELECT * FROM players ORDER BY name COLLATE NOCASE')
+    const attrRows = await d.select<AttributeRow[]>('SELECT player_id, attr, value FROM player_attributes')
+    const attrs = new Map<number, Attributes>()
+    for (const a of attrRows) {
+      if (!isAttributeKey(a.attr)) continue
+      const m = attrs.get(a.player_id) ?? {}
+      m[a.attr] = a.value
+      attrs.set(a.player_id, m)
+    }
+    return rows.map((r) => rowToPlayer(r, attrs.get(r.id) ?? {}))
+  }
+
+  async savePlayer(p: NewPlayer): Promise<Player> {
+    const d = await db()
+    const params = [
+      p.name, p.age, p.nationality, p.foot, JSON.stringify(p.positions), p.caStars, p.paStars,
+      p.contractEnd, p.wage, p.value, p.status, p.notes,
+    ]
+    let id = p.id
+    if (id === undefined) {
+      const res = await d.execute(
+        `INSERT INTO players (name, age, nationality, foot, positions, ca_stars, pa_stars,
+           contract_end, wage, value, status, notes)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+        params,
+      )
+      id = res.lastInsertId as number
+    } else {
+      await d.execute(
+        `UPDATE players SET name = $1, age = $2, nationality = $3, foot = $4, positions = $5,
+           ca_stars = $6, pa_stars = $7, contract_end = $8, wage = $9, value = $10, status = $11,
+           notes = $12, updated_at = datetime('now')
+         WHERE id = $13`,
+        [...params, id],
+      )
+    }
+    await this.writeAttributes(d, id, p.attributes)
+    // La photo n'est jamais écrite ici (voir setPlayerPhoto) : on relit l'état en base.
+    const [photoRow] = await d.select<Pick<PlayerRow, 'photo' | 'photo_lookup'>[]>(
+      'SELECT photo, photo_lookup FROM players WHERE id = $1', [id],
+    )
+    return { ...p, id, photo: photoRow?.photo ?? null, photoLookup: photoRow?.photo_lookup ?? null }
+  }
+
+  async setPlayerPhoto(id: number, photo: string | null, lookup: string | null): Promise<void> {
+    const d = await db()
+    await d.execute('UPDATE players SET photo = $1, photo_lookup = $2 WHERE id = $3', [photo, lookup, id])
+  }
+
+  private async writeAttributes(d: Database, playerId: number, attributes: Attributes) {
+    await d.execute('DELETE FROM player_attributes WHERE player_id = $1', [playerId])
+    for (const [attr, value] of Object.entries(attributes)) {
+      if (value === undefined) continue
+      await d.execute('INSERT INTO player_attributes (player_id, attr, value) VALUES ($1, $2, $3)', [
+        playerId, attr, value,
+      ])
+    }
+  }
+
+  async getCachedPhoto(key: string): Promise<string | null | undefined> {
+    const d = await db()
+    const rows = await d.select<{ photo: string | null }[]>('SELECT photo FROM photo_cache WHERE key = $1', [key])
+    return rows.length ? rows[0].photo : undefined
+  }
+
+  async cachePhoto(key: string, photo: string | null, overwrite = true): Promise<void> {
+    const d = await db()
+    await d.execute(
+      overwrite
+        ? `INSERT INTO photo_cache (key, photo) VALUES ($1, $2)
+           ON CONFLICT(key) DO UPDATE SET photo = excluded.photo, fetched_at = datetime('now')`
+        : 'INSERT OR IGNORE INTO photo_cache (key, photo) VALUES ($1, $2)',
+      [key, photo],
+    )
+  }
+
+  async uncachePhoto(key: string): Promise<void> {
+    const d = await db()
+    await d.execute('DELETE FROM photo_cache WHERE key = $1', [key])
+  }
+
+  async deletePlayer(id: number): Promise<void> {
+    const d = await db()
+    await d.execute('DELETE FROM player_attributes WHERE player_id = $1', [id])
+    await d.execute('DELETE FROM players WHERE id = $1', [id])
+  }
+
+  async listTactics(): Promise<Tactic[]> {
+    const d = await db()
+    const rows = await d.select<TacticRow[]>('SELECT id, name, formation, slots, excluded, notes FROM tactics ORDER BY id')
+    return rows.map(({ excluded, ...r }) => ({
+      ...r,
+      slots: normalizeTacticSlots(JSON.parse(r.slots), r.formation),
+      excludedPlayerIds: JSON.parse(excluded),
+    }))
+  }
+
+  async saveTactic(t: NewTactic): Promise<Tactic> {
+    const d = await db()
+    const params = [t.name, t.formation, JSON.stringify(t.slots), JSON.stringify(t.excludedPlayerIds), t.notes]
+    if (t.id === undefined) {
+      const res = await d.execute(
+        'INSERT INTO tactics (name, formation, slots, excluded, notes) VALUES ($1, $2, $3, $4, $5)',
+        params,
+      )
+      return { ...t, id: res.lastInsertId as number }
+    }
+    await d.execute(
+      `UPDATE tactics SET name = $1, formation = $2, slots = $3, excluded = $4, notes = $5,
+         updated_at = datetime('now')
+       WHERE id = $6`,
+      [...params, t.id],
+    )
+    return { ...t, id: t.id }
+  }
+
+  async deleteTactic(id: number): Promise<void> {
+    const d = await db()
+    await d.execute('DELETE FROM tactics WHERE id = $1', [id])
+  }
+
+  async getRoles(): Promise<RoleDefinition[] | null> {
+    const d = await db()
+    const rows = await d.select<{ value: string }[]>("SELECT value FROM settings WHERE key = 'roles'")
+    if (!rows.length) return null
+    // Les rôles enregistrés à l'ancien format (attributs clés / secondaires) sont ignorés :
+    // les profils par défaut (poids par attribut) s'appliquent jusqu'au prochain enregistrement.
+    const stored: unknown = JSON.parse(rows[0].value)
+    return isRoleList(stored) ? stored : null
+  }
+
+  async saveRoles(roles: RoleDefinition[] | null): Promise<void> {
+    const d = await db()
+    if (roles === null) {
+      await d.execute("DELETE FROM settings WHERE key = 'roles'")
+    } else {
+      await d.execute(
+        "INSERT INTO settings (key, value) VALUES ('roles', $1) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        [JSON.stringify(roles)],
+      )
+    }
+  }
+
+  async exportAll(): Promise<Backup> {
+    return {
+      app: 'fm27-manager',
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      players: await this.listPlayers(),
+      tactics: await this.listTactics(),
+      roles: await this.getRoles(),
+    }
+  }
+
+  async importAll(backup: Backup): Promise<void> {
+    if (backup.app !== 'fm27-manager' || backup.version !== 1) {
+      throw new Error(INVALID_BACKUP)
+    }
+    const d = await db()
+    await d.execute('DELETE FROM player_attributes')
+    await d.execute('DELETE FROM players')
+    await d.execute('DELETE FROM tactics')
+
+    // Les identifiants de joueurs changent : on remappe les verrous des tactiques.
+    const idMap = new Map<number, number>()
+    for (const p of backup.players) {
+      const saved = await this.savePlayer({ ...p, id: undefined })
+      if (p.photoLookup) await this.setPlayerPhoto(saved.id, p.photo ?? null, p.photoLookup)
+      idMap.set(p.id, saved.id)
+    }
+    for (const t of backup.tactics) {
+      await this.saveTactic({
+        ...t,
+        id: undefined,
+        slots: t.slots.map((s) => ({
+          ...s,
+          lockedPlayerId: s.lockedPlayerId !== null ? (idMap.get(s.lockedPlayerId) ?? null) : null,
+        })),
+        excludedPlayerIds: (t.excludedPlayerIds ?? []).flatMap((id) => idMap.get(id) ?? []),
+      })
+    }
+    await this.saveRoles(isRoleList(backup.roles) ? backup.roles : null)
+  }
+}

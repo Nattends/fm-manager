@@ -1,0 +1,6 @@
+# Fins de ligne LF dans le dépôt (les sources sont écrites en LF).
+* text=auto eol=lf
+*.png binary
+*.ico binary
+*.icns binary
+
