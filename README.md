@@ -8,7 +8,7 @@ La saisie est **manuelle** pour l'instant (l'export Ctrl+P n'existe plus dans FM
 
 ### Clubs
 - **Plusieurs clubs**, un par partie de FM : chacun a son effectif et ses tactiques (les rôles sont communs). Choix du club dans la barre du haut ; création, renommage, suppression.
-- **Logos Transfermarkt automatiques** d'après le nom du club (club géré comme clubs de prêt), mis en cache, sur une pastille claire pour rester lisibles.
+- **Logos Transfermarkt automatiques** d'après le nom du club (club géré comme clubs de prêt), mis en cache. Rendu au choix dans les réglages (halo, contour, pastille blanche ou aucun) pour que les écussons sombres restent lisibles.
 
 ### Effectif
 - Tableau triable et filtrable (recherche, poste, statut, âge max), colonnes au choix (dont les 47 attributs), mémorisées. Colonne **Club** avec logo.

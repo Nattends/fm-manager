@@ -4,11 +4,14 @@ import { DownloadIcon, Loader2Icon, UploadIcon, UsersIcon, UserMinusIcon } from 
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { askConfirm } from '@/lib/confirm'
+import { LOGO_STYLES, setLogoStyle, useLogoStyle } from '@/lib/logoStyle'
+import { cn } from '@/lib/utils'
 import { loadSizeLock, setSizeLock } from '@/lib/windowMode'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { ClubLogo } from '@/components/ClubLogo'
 import { PageHeader, Panel } from '@/components/layout'
 import type { Backup } from '@/data/dataSource'
 import { INVALID_BACKUP } from '@/data/manualSource'
@@ -18,7 +21,8 @@ import { LANGUAGES } from '@/i18n/languages'
 import { useStore } from '@/store'
 
 export function SettingsPage() {
-  const { players, tactics, exportAll, importAll, savePlayer, deletePlayer } = useStore()
+  const { players, tactics, activeClub, exportAll, importAll, savePlayer, deletePlayer } = useStore()
+  const logoStyle = useLogoStyle()
   const { t, lang, setLang } = useI18n()
   const [demoBusy, setDemoBusy] = useState(false)
   const [sizeLocked, setSizeLocked] = useState(loadSizeLock)
@@ -106,6 +110,22 @@ export function SettingsPage() {
                   {sizeLocked ? t.settings.sizeLockOn : t.settings.sizeLockOff}
                 </p>
               </div>
+            </div>
+          </Panel>
+
+          <Panel title={t.settings.logoStyle} className="col-span-2">
+            <p className="mb-3 text-[13px] leading-relaxed text-muted-foreground">{t.settings.logoStyleText}</p>
+            <div className="grid grid-cols-4 gap-2">
+              {LOGO_STYLES.map((s) => (
+                <button key={s} onClick={() => setLogoStyle(s)}
+                  className={cn(
+                    'flex flex-col items-center gap-2 rounded-lg border p-3 text-sm transition-colors',
+                    s === logoStyle ? 'border-emerald-500 bg-emerald-500/10 text-slate-100' : 'border-border text-slate-300 hover:bg-secondary/50',
+                  )}>
+                  <ClubLogo name={activeClub.name} size={40} variant={s} />
+                  <span className="font-medium">{t.settings.logoStyles[s]}</span>
+                </button>
+              ))}
             </div>
           </Panel>
 

@@ -1,6 +1,7 @@
 import type { AttributeGroup, AttributeKey } from '../domain/attributes'
 import type { FamiliarityLevel, Position } from '../domain/positions'
 import type { Duty, Foot, PlayerStatus } from '../domain/types'
+import type { LogoStyle } from '../lib/logoStyle'
 
 export const en = {
   locale: 'en-GB',
@@ -276,6 +277,9 @@ export const en = {
     sizeLock: 'Lock window size',
     sizeLockOn: 'The window stays 1500 wide and between 950 and 1300 high. Turn this off to resize it freely or maximise it (full screen).',
     sizeLockOff: 'Free size: resize the window however you like, or maximise it (double-click the title bar). Turn this back on to return to the standard size.',
+    logoStyle: 'Club logos',
+    logoStyleText: 'How club logos are drawn on the dark background, so that dark crests (Tottenham…) stay visible.',
+    logoStyles: { halo: 'Glow', outline: 'Outline', chip: 'White chip', none: 'None' } satisfies Record<LogoStyle, string>,
     dataSource: 'Data source',
     dataSourceText: 'Manual entry. Reading data directly from FM27 (game memory) is planned for a future version.',
   },
