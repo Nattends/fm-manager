@@ -4,7 +4,7 @@ import { DEFAULT_ROLES, DEFAULT_ROLE_BY_POSITION, isRoleList } from './defaultRo
 import { FORMATIONS, getFormation } from './formations'
 import { hungarianMax } from './hungarian'
 import {
-  benchPlayer, canPlace, computeLineup, copyInPossession, defaultTacticSlots, layoutName, mergePhase, moveSlot, normalizeTacticSlots,
+  benchPlayer, canPlace, computeLineup, keyAttributesAt, rateAtSlot, copyInPossession, defaultTacticSlots, layoutName, mergePhase, moveSlot, normalizeTacticSlots,
   patchShape, phaseSlots, placePlayer, resolveRole, summarizeLineup, widenLegacyGrid,
 } from './lineup'
 import { PITCH_COLS, PITCH_ROWS, formationName, positionAt } from './pitch'
@@ -325,6 +325,19 @@ describe('computeLineup', () => {
     // Les autres postes ne bougent pas.
     expect(after.slots.filter((s) => s.slot.id !== 'st').map((s) => s.starter?.player.name))
       .toEqual(lineup.slots.filter((s) => s.slot.id !== 'st').map((s) => s.starter?.player.name))
+  })
+
+  it('compare deux joueurs sur un poste : note par phase et attributs clés', () => {
+    const ip = computeLineup(defaultTacticSlots(f), squad, DEFAULT_ROLES, [], 'ip')
+    const oop = computeLineup(defaultTacticSlots(f), squad, DEFAULT_ROLES, [], 'oop')
+    const st = (l: typeof ip) => l.slots.find((s) => s.slot.id === 'st')!
+    const bu = rateAtSlot(squad.find((p) => p.name === 'BU')!, st(ip), st(oop))
+    const bu2 = rateAtSlot(squad.find((p) => p.name === 'BU2')!, st(ip), st(oop))
+    expect(bu.overall).toBeGreaterThan(bu2.overall)
+    expect(bu.ip.score).toBe(st(ip).starter!.rating.score)
+    const keys = keyAttributesAt(st(ip), st(oop))
+    expect(keys).toHaveLength(6)
+    expect(keys).toContain('finishing')
   })
 
   it('échanger deux titulaires n\'écarte personne', () => {

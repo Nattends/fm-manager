@@ -5,7 +5,8 @@ import {
 import { hungarianMax } from './hungarian'
 import { formationName, isFieldCell, laneCol, positionAt } from './pitch'
 import type { Position } from './positions'
-import { rateRole, type RoleRating } from './rating'
+import type { AttributeKey } from './attributes'
+import { rateRole, roleWeights, type RoleRating } from './rating'
 import type { Phase, Player, RoleDefinition, SlotShape, TacticSlot } from './types'
 
 export const BACKUPS_PER_SLOT = 2
@@ -302,6 +303,31 @@ export function placePlayer(lineup: Lineup, excludedPlayerIds: number[], playerI
   const excluded = excludedPlayerIds.filter((id) => id !== playerId)
   if (!source && displaced !== null && !excluded.includes(displaced)) excluded.push(displaced)
   return { slots, excludedPlayerIds: excluded }
+}
+
+/** Note d'un joueur sur un poste de la tactique, dans les deux phases. */
+export interface SlotRating {
+  ip: RoleRating
+  oop: RoleRating
+  /** Moyenne des deux phases (critère du meilleur XI). */
+  overall: number
+}
+
+export function rateAtSlot(player: Player, ip: LineupSlot, oop: LineupSlot): SlotRating {
+  const r = { ip: rateRole(player, ip.role, ip.slot.position), oop: rateRole(player, oop.role, oop.slot.position) }
+  return { ...r, overall: Math.round(((r.ip.score + r.oop.score) / 2) * 10) / 10 }
+}
+
+/**
+ * Attributs qui comptent le plus pour un poste : poids cumulés des rôles avec et sans
+ * ballon, du plus lourd au plus léger.
+ */
+export function keyAttributesAt(ip: LineupSlot, oop: LineupSlot, count = 6): AttributeKey[] {
+  const total = new Map<AttributeKey, number>()
+  for (const role of ip.role.id === oop.role.id ? [ip.role] : [ip.role, oop.role]) {
+    for (const [attr, w] of roleWeights(role)) total.set(attr, (total.get(attr) ?? 0) + w)
+  }
+  return [...total.entries()].sort((a, b) => b[1] - a[1]).slice(0, count).map(([a]) => a)
 }
 
 /** Retire un joueur du XI : il ne sera plus choisi automatiquement pour cette tactique. */

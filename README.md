@@ -30,6 +30,7 @@ La saisie est **manuelle** pour l'instant (l'export Ctrl+P n'existe plus dans FM
 - 8 formations prédéfinies, ou formation libre en **déplaçant les cartes de poste** sur la grille du terrain (6 lignes × 9 colonnes : 5 couloirs et 4 demi-espaces).
 - **Meilleur XI automatique** par affectation optimale (algorithme hongrois) qui maximise la somme des notes (moyenne avec / sans ballon). Joueurs verrouillés, écartés ou indisponibles respectés.
 - Glisser-déposer des joueurs : un remplaçant déposé sur un titulaire le **remplace** (le titulaire sort du XI sans chambouler les autres postes), deux titulaires s'échangent, mise à l'écart ; doublures par poste.
+- **Comparaison au survol** : en glissant un joueur sur un poste occupé, une fiche compare le titulaire et l'arrivant (notes avec / sans ballon, note globale, attributs clés du poste, écart).
 - Cartes colorées par ligne : photo, note, familiarité au poste, rôle avec recherche, devoir, verrou, première doublure.
 - Résumé de l'équipe : note du XI, notes par ligne, âge moyen, joueurs hors poste, postes vides.
 - **Grande vue** plein écran avec terrain horizontal.

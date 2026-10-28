@@ -1,6 +1,6 @@
 import {
   DndContext, DragOverlay, PointerSensor, pointerWithin, useDraggable, useDroppable, useSensor, useSensors,
-  type DragEndEvent, type DragStartEvent,
+  type DragEndEvent, type DragOverEvent, type DragStartEvent,
 } from '@dnd-kit/core'
 import {
   ColumnsIcon, CopyIcon, GripVerticalIcon, LockIcon, LockOpenIcon, Maximize2Icon, Minimize2Icon, PanelRightCloseIcon, PanelRightOpenIcon,
@@ -22,16 +22,16 @@ import { PageHeader, StatTile } from '@/components/layout'
 import { Nationality } from '@/components/Nationality'
 import { RolePicker } from '@/components/RolePicker'
 import { PlayerAvatar, RatingBadge } from '@/components/ui'
-import { LINE_COLORS, lineColorOf, scoreColor, scoreRing, scoreText } from '@/components/styles'
+import { LINE_COLORS, attrColor, lineColorOf, scoreColor, scoreRing, scoreText } from '@/components/styles'
 import { CUSTOM_FORMATION_ID, FORMATIONS, getFormation, type Formation } from '@/domain/formations'
 import {
-  benchPlayer, canPlace, computeLineup, copyInPossession, defaultTacticSlots, isAvailable, layoutName, mergePhase, moveSlot,
+  benchPlayer, canPlace, computeLineup, copyInPossession, keyAttributesAt, rateAtSlot, defaultTacticSlots, isAvailable, layoutName, mergePhase, moveSlot,
   patchShape, phaseSlots, placePlayer, summarizeLineup,
   type Assignment, type Lineup, type LineupSlot, type LineupSummary, type PitchLine,
 } from '@/domain/lineup'
 import { PITCH_COLS, PITCH_ROWS, cellCenter, isHalfSpace, positionAt } from '@/domain/pitch'
 import { POSITIONS } from '@/domain/positions'
-import { bestRole } from '@/domain/rating'
+import { bestRole, type RoleRating } from '@/domain/rating'
 import type { Duty, NewTactic, Phase, Player, RoleDefinition, TacticSlot } from '@/domain/types'
 import { useI18n } from '@/i18n'
 import { useStore } from '@/store'
@@ -103,6 +103,8 @@ export function TacticPage() {
   const [dirty, setDirty] = useState(false)
   const [openId, setOpenId] = useState<number | null>(null)
   const [dragged, setDragged] = useState<Dragged | null>(null)
+  /** Poste survolé par le joueur glissé (comparaison avec le titulaire). */
+  const [overSlot, setOverSlot] = useState<{ phase: Phase; slotId: string } | null>(null)
   const [tab, setTab] = useState<PanelTab>('squad')
   const [big, setBigState] = useState(loadBigView)
   const [panelOpen, setPanelOpen] = useState(false)
@@ -173,8 +175,21 @@ export function TacticPage() {
     }
   }
 
-  const onDragEnd = (e: DragEndEvent) => {
+  const onDragOver = (e: DragOverEvent) => {
+    const id = e.over?.id
+    const data = e.active.data.current as DragData
+    if (data.kind !== 'player' || typeof id !== 'string' || !id.startsWith(SLOT_PREFIX)) return setOverSlot(null)
+    const [ph, slotId] = id.slice(SLOT_PREFIX.length).split(':')
+    setOverSlot({ phase: ph as Phase, slotId })
+  }
+
+  const endDrag = () => {
     setDragged(null)
+    setOverSlot(null)
+  }
+
+  const onDragEnd = (e: DragEndEvent) => {
+    endDrag()
     const overId = e.over?.id
     if (typeof overId !== 'string') return
     const data = e.active.data.current as DragData
@@ -217,7 +232,7 @@ export function TacticPage() {
 
   return (
     <DndContext sensors={sensors} collisionDetection={pointerWithin}
-      onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={() => setDragged(null)}>
+      onDragStart={onDragStart} onDragOver={onDragOver} onDragEnd={onDragEnd} onDragCancel={endDrag}>
       <div className={big ? 'fixed inset-0 z-40 flex flex-col bg-background' : 'flex h-full flex-col'}>
         <PageHeader title={t.tactic.title}
           actions={
@@ -330,9 +345,19 @@ export function TacticPage() {
 
       <DragOverlay dropAnimation={null}>
         {dragged?.kind === 'player' && (
-          <div className="pointer-events-none flex items-center gap-2 rounded-lg border border-amber-400/80 bg-popover px-2.5 py-1.5 text-sm font-semibold shadow-2xl">
-            <PlayerAvatar player={dragged.player} size={28} />
-            {dragged.player.name}
+          <div className="pointer-events-none w-max">
+            <div className="flex w-max items-center gap-2 rounded-lg border border-amber-400/80 bg-popover px-2.5 py-1.5 text-sm font-semibold shadow-2xl">
+              <PlayerAvatar player={dragged.player} size={28} />
+              {dragged.player.name}
+            </div>
+            {overSlot && (() => {
+              const shown = lineups[overSlot.phase].slots.find((s) => s.slot.id === overSlot.slotId)
+              const ip = lineups.ip.slots.find((s) => s.slot.id === overSlot.slotId)
+              const oop = lineups.oop.slots.find((s) => s.slot.id === overSlot.slotId)
+              if (!shown?.starter || !ip || !oop || shown.starter.player.id === dragged.player.id) return null
+              return <ReplaceCompare phase={overSlot.phase} shown={shown} ip={ip} oop={oop} incoming={dragged.player}
+                swap={starterIds.has(dragged.player.id)} />
+            })()}
           </div>
         )}
         {dragged?.kind === 'card' && (
@@ -349,6 +374,99 @@ export function TacticPage() {
         )}
       </DragOverlay>
     </DndContext>
+  )
+}
+
+/**
+ * Comparaison affichée sous le joueur glissé quand il survole un poste occupé :
+ * notes avec et sans ballon, note globale et attributs clés du poste, titulaire contre arrivant.
+ */
+function ReplaceCompare({ phase, shown, ip, oop, incoming, swap }: {
+  phase: Phase
+  /** Poste dans la phase survolée. */
+  shown: LineupSlot
+  ip: LineupSlot
+  oop: LineupSlot
+  incoming: Player
+  /** L'arrivant est titulaire ailleurs : les deux joueurs échangent leur place. */
+  swap: boolean
+}) {
+  const { t, roleName } = useI18n()
+  const current = shown.starter!.player
+  const a = rateAtSlot(current, ip, oop)
+  const b = rateAtSlot(incoming, ip, oop)
+  const delta = Math.round((b.overall - a.overall) * 10) / 10
+  const position = shown.slot.position
+  const phases: Phase[] = [phase, phase === 'ip' ? 'oop' : 'ip']
+  const score = (r: RoleRating) => (r.rated ? r.score.toFixed(0) : '—')
+  const better = (x: number, y: number) => (x > y ? 'font-bold text-emerald-300' : x < y ? 'text-slate-400' : 'text-slate-200')
+
+  return (
+    <div className="mt-2 w-[22rem] overflow-hidden rounded-xl border border-border bg-popover text-[12px] shadow-2xl">
+      <div className="flex items-center gap-2 border-b border-border bg-secondary/40 px-3 py-2">
+        <PositionChip position={position} />
+        <span className="min-w-0 flex-1 truncate font-semibold text-slate-100">{roleName(shown.role)}</span>
+        <span className={cn('shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold', swap ? 'bg-sky-500/20 text-sky-300' : 'bg-amber-400/20 text-amber-300')}>
+          {swap ? t.tactic.swap : t.tactic.compareReplace}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-start gap-2 px-3 pt-3">
+        {[current, null, incoming].map((p, i) => p === null ? (
+          <span key={i} className="self-center text-[11px] text-muted-foreground">{t.tactic.versus}</span>
+        ) : (
+          <div key={p.id} className={cn('flex min-w-0 flex-col items-center gap-1 text-center', i === 2 && 'text-amber-200')}>
+            <PlayerAvatar player={p} size={40} />
+            <span className="w-full truncate font-semibold">{p.name}</span>
+            <FamiliarityTag value={p.positions[position]} className="text-[11px]" />
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-2 space-y-0.5 px-3">
+        {phases.map((ph) => (
+          <CompareRow key={ph} label={t.tactic.phase[ph]} left={score(a[ph])} right={score(b[ph])}
+            leftClass={better(a[ph].score, b[ph].score)} rightClass={better(b[ph].score, a[ph].score)} />
+        ))}
+        <CompareRow label={t.tactic.compareOverall} left={a.overall.toFixed(0)} right={b.overall.toFixed(0)} strong
+          leftClass={better(a.overall, b.overall)} rightClass={better(b.overall, a.overall)} />
+      </div>
+
+      <div className="mt-2 border-t border-border px-3 pt-2 pb-1">
+        <div className="mb-1 text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">{t.tactic.compareAttributes}</div>
+        {keyAttributesAt(ip, oop).map((attr) => {
+          const x = current.attributes[attr]
+          const y = incoming.attributes[attr]
+          return (
+            <CompareRow key={attr} label={t.attributes[attr]} left={x ?? '–'} right={y ?? '–'}
+              leftClass={cn(attrColor(x), x !== undefined && y !== undefined && x > y && 'font-bold')}
+              rightClass={cn(attrColor(y), x !== undefined && y !== undefined && y > x && 'font-bold')} />
+          )
+        })}
+      </div>
+
+      <div className={cn('px-3 py-2 text-center text-[12px] font-semibold',
+        delta > 0 ? 'bg-emerald-500/15 text-emerald-300' : delta < 0 ? 'bg-rose-500/15 text-rose-300' : 'bg-secondary/40 text-slate-300')}>
+        {t.tactic.compareDelta(delta > 0 ? `+${delta.toFixed(1)}` : delta.toFixed(1))}
+      </div>
+    </div>
+  )
+}
+
+function CompareRow({ label, left, right, leftClass, rightClass, strong }: {
+  label: string
+  left: ReactNode
+  right: ReactNode
+  leftClass?: string
+  rightClass?: string
+  strong?: boolean
+}) {
+  return (
+    <div className={cn('grid grid-cols-[3rem_minmax(0,1fr)_3rem] items-center gap-2 py-0.5 tabular-nums', strong && 'mt-0.5 border-t border-border/60 pt-1 text-[13px]')}>
+      <span className={cn('text-left', leftClass)}>{left}</span>
+      <span className="truncate text-center text-muted-foreground">{label}</span>
+      <span className={cn('text-right', rightClass)}>{right}</span>
+    </div>
   )
 }
 
