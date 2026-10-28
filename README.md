@@ -6,9 +6,14 @@ La saisie est **manuelle** pour l'instant (l'export Ctrl+P n'existe plus dans FM
 
 ## Fonctionnalités
 
+### Clubs
+- **Plusieurs clubs**, un par partie de FM : chacun a son effectif et ses tactiques (les rôles sont communs). Choix du club dans la barre du haut ; création, renommage, suppression.
+- **Logos Transfermarkt automatiques** d'après le nom du club (club géré comme clubs de prêt), mis en cache.
+
 ### Effectif
-- Tableau triable et filtrable (recherche, poste, statut, âge max), colonnes au choix (dont les 47 attributs), mémorisées.
-- Fiche joueur : photo, mini-terrain des postes coloré par familiarité, meilleur rôle, onglets **Attributs / Rôles / Contrat & notes**.
+- Tableau triable et filtrable (recherche, poste, statut, âge max), colonnes au choix (dont les 47 attributs), mémorisées. Colonne **Club** avec logo.
+- **Joueurs prêtés** : hors effectif (onglet « Prêtés ») et jamais alignés ; leur club d'accueil est affiché avec son logo.
+- Fiche joueur : photo, club, étoiles niveau actuel / potentiel, mini-terrain des postes coloré par familiarité, meilleur rôle, onglets **Attributs / Rôles / Contrat & notes**.
 - Formulaire avec infos de base obligatoires, attributs détaillés facultatifs et choix des postes sur un mini-terrain.
 - **Photos Transfermarkt automatiques** : recherche par nom, filtrée par âge et nationalité, mise en cache locale. Les joueurs générés par le jeu ou introuvables ont un avatar « inconnu ». Actions « Rechercher à nouveau » et « Mauvaise photo ».
 
@@ -19,8 +24,9 @@ La saisie est **manuelle** pour l'instant (l'export Ctrl+P n'existe plus dans FM
 - Écran **Roles** : liste groupée et filtrable, poids réglables au clic (×5 → ×3 → ×1 → ×0), postes du rôle.
 
 ### Tactique
+- **Avec ballon / sans ballon** : chaque poste a sa case et son rôle dans les deux phases (bouton pour recopier la phase avec ballon). Le meilleur XI maximise la moyenne des deux notes.
 - 8 formations prédéfinies, ou formation libre en **déplaçant les cartes de poste** sur la grille du terrain (6 lignes × 5 couloirs, comme FM).
-- **Meilleur XI automatique** par affectation optimale (algorithme hongrois) qui maximise la somme des notes. Joueurs verrouillés, écartés ou indisponibles respectés.
+- **Meilleur XI automatique** par affectation optimale (algorithme hongrois) qui maximise la somme des notes (moyenne avec / sans ballon). Joueurs verrouillés, écartés ou indisponibles respectés.
 - Glisser-déposer des joueurs (placement, échange, mise à l'écart), doublures par poste.
 - Cartes colorées par ligne : photo, note, familiarité au poste, rôle avec recherche, devoir, verrou, première doublure.
 - Résumé de l'équipe : note du XI, notes par ligne, âge moyen, joueurs hors poste, postes vides.
@@ -66,7 +72,7 @@ npm run tauri dev      # appli en mode développement, rechargement à chaud
 ## Données
 
 - Base SQLite locale : `%APPDATA%\com.fm27.manager\fm27.db` (migrations dans `src-tauri/migrations/`).
-- Rien n'est envoyé ailleurs, sauf les recherches de photos sur transfermarkt.com (nom du joueur).
+- Rien n'est envoyé ailleurs, sauf les recherches de photos et de logos sur transfermarkt.com (nom du joueur ou du club).
 
 ## Structure
 
@@ -84,4 +90,4 @@ src-tauri/     Application Rust : plugins, migrations SQL, commande transfermark
 
 ## Versions
 
-Les versions sont marquées par des tags git (`v0.1.0`, …). Voir `git tag -n` pour le résumé de chacune.
+Les versions sont marquées par des tags git (`v0.1.0`, `v0.2.0`, …), avec une [release GitHub](https://github.com/Nattends/fm-manager/releases) et son installateur Windows. Voir `git tag -n` pour le résumé de chacune.
