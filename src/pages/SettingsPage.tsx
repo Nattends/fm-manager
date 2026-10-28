@@ -1,6 +1,6 @@
 import { open, save } from '@tauri-apps/plugin-dialog'
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
-import { DownloadIcon, Loader2Icon, UploadIcon, UsersIcon, UserMinusIcon } from 'lucide-react'
+import { DicesIcon, DownloadIcon, Loader2Icon, UploadIcon, UsersIcon, UserMinusIcon } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { askConfirm } from '@/lib/confirm'
@@ -16,12 +16,13 @@ import { PageHeader, Panel } from '@/components/layout'
 import type { Backup } from '@/data/dataSource'
 import { INVALID_BACKUP } from '@/data/manualSource'
 import { demoSquad, isDemoPlayer } from '@/domain/demoSquad'
+import { randomTeam } from '@/domain/randomSquad'
 import { useI18n } from '@/i18n'
 import { LANGUAGES } from '@/i18n/languages'
 import { useStore } from '@/store'
 
 export function SettingsPage() {
-  const { players, tactics, activeClub, exportAll, importAll, savePlayer, deletePlayer } = useStore()
+  const { players, tactics, clubs, activeClub, createClub, setActiveClub, exportAll, importAll, savePlayer, deletePlayer } = useStore()
   const logoStyle = useLogoStyle()
   const { t, lang, setLang } = useI18n()
   const [demoBusy, setDemoBusy] = useState(false)
@@ -67,6 +68,22 @@ export function SettingsPage() {
       const squad = demoSquad()
       for (const p of squad) await savePlayer(p)
       toast.success(t.settings.demoLoaded(squad.length))
+    } catch (e) {
+      toast.error(String(e))
+    } finally {
+      setDemoBusy(false)
+    }
+  }
+
+  /** Nouveau club de test, avec une équipe aléatoire, puis bascule sur ce club. */
+  const generateTeam = async () => {
+    setDemoBusy(true)
+    try {
+      const team = randomTeam(Date.now() % 2_147_483_647, clubs.map((c) => c.name))
+      const club = await createClub(team.clubName)
+      for (const p of team.players) await savePlayer({ ...p, clubId: club.id })
+      setActiveClub(club.id)
+      toast.success(t.settings.randomTeamDone(team.clubName, team.players.length))
     } catch (e) {
       toast.error(String(e))
     } finally {
@@ -149,6 +166,10 @@ export function SettingsPage() {
                 <UserMinusIcon />{t.settings.demoRemove(demoCount)}
               </Button>
               {demoBusy && <Loader2Icon className="size-4 animate-spin text-muted-foreground" />}
+            </div>
+            <div className="mt-5 border-t border-border pt-4">
+              <p className="mb-3 text-[13px] leading-relaxed text-muted-foreground">{t.settings.randomTeamText}</p>
+              <Button variant="outline" onClick={generateTeam} disabled={demoBusy}><DicesIcon />{t.settings.randomTeam}</Button>
             </div>
           </Panel>
         </div>

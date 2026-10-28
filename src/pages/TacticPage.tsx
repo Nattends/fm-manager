@@ -107,7 +107,7 @@ export function TacticPage() {
   const [big, setBigState] = useState(loadBigView)
   const [panelOpen, setPanelOpen] = useState(false)
   /** Phase affichée sur le terrain (avec ou sans ballon), ou les deux terrains côte à côte. */
-  const [phaseView, setPhaseView] = useState<PhaseView>('ip')
+  const [phaseView, setPhaseView] = useState<PhaseView>('both')
   const both = phaseView === 'both'
   /** Phase des réglages de la barre (formation) et du panneau : avec ballon quand les deux sont affichées. */
   const phase: Phase = both ? 'ip' : phaseView

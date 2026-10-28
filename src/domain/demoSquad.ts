@@ -9,7 +9,7 @@ export function isDemoPlayer(p: { notes: string }): boolean {
   return p.notes.startsWith(DEMO_MARKER)
 }
 
-type Archetype = 'gk' | 'cb' | 'fb' | 'dm' | 'mc' | 'w' | 'amc' | 'st'
+export type Archetype = 'gk' | 'cb' | 'fb' | 'dm' | 'mc' | 'w' | 'amc' | 'st'
 
 /** Attributs clés de chaque profil : ils sont tirés au niveau du joueur, les autres en dessous. */
 const KEY_ATTRIBUTES: Record<Archetype, AttributeKey[]> = {
@@ -24,7 +24,7 @@ const KEY_ATTRIBUTES: Record<Archetype, AttributeKey[]> = {
 }
 
 /** Générateur pseudo-aléatoire déterministe (mulberry32) : la démo est identique à chaque chargement. */
-function rng(seed: number): () => number {
+export function rng(seed: number): () => number {
   let a = seed
   return () => {
     a = (a + 0x6d2b79f5) | 0
@@ -34,7 +34,7 @@ function rng(seed: number): () => number {
   }
 }
 
-function makeAttributes(archetype: Archetype, level: number, rand: () => number): Attributes {
+export function makeAttributes(archetype: Archetype, level: number, rand: () => number): Attributes {
   const keys = new Set(KEY_ATTRIBUTES[archetype])
   const groups = archetype === 'gk'
     ? (['goalkeeping', 'technical', 'mental', 'physical'] as const)

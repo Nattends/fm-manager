@@ -25,7 +25,7 @@ La saisie est **manuelle** pour l'instant (l'export Ctrl+P n'existe plus dans FM
 - Écran **Roles** : liste groupée et filtrable, poids réglables au clic (×5 → ×3 → ×1 → ×0), postes du rôle.
 
 ### Tactique
-- **Avec ballon / sans ballon** : chaque poste a sa case et son rôle dans les deux phases (bouton pour recopier la phase avec ballon), et une vue **Les deux** affiche les deux terrains côte à côte. Le meilleur XI maximise la moyenne des deux notes.
+- **Avec ballon / sans ballon** : chaque poste a sa case et son rôle dans les deux phases (bouton pour recopier la phase avec ballon), et une vue **Les deux** (par défaut) affiche les deux terrains côte à côte. Le meilleur XI maximise la moyenne des deux notes.
 - **Demi-espaces** : en plus des 5 couloirs de FM, une carte peut se placer entre deux couloirs (poste axial de la ligne), tant qu'elle ne chevauche pas une voisine.
 - 8 formations prédéfinies, ou formation libre en **déplaçant les cartes de poste** sur la grille du terrain (6 lignes × 9 colonnes : 5 couloirs et 4 demi-espaces).
 - **Meilleur XI automatique** par affectation optimale (algorithme hongrois) qui maximise la somme des notes (moyenne avec / sans ballon). Joueurs verrouillés, écartés ou indisponibles respectés.
@@ -38,6 +38,7 @@ La saisie est **manuelle** pour l'instant (l'export Ctrl+P n'existe plus dans FM
 - Interface **anglais / français**.
 - Fenêtre standard de 1500 de large (hauteur 950 à 1300) et **mode portrait 1080×1920** pour un écran vertical.
 - Sauvegarde / restauration en JSON, **équipe de démo** (vrais et faux joueurs) chargeable et retirable d'un clic.
+- **Équipes de test aléatoires** : un nouveau club réel (avec logo) et 27 joueurs tirés au sort, dont environ un tiers de vrais joueurs, pour comparer d'une équipe à l'autre.
 
 ## Stack
 

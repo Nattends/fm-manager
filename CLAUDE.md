@@ -14,7 +14,7 @@ The PATH in Claude Code sessions can be stale on this machine. Prefix commands w
 - Full build + update of the installed app (what the user launches, `%LOCALAPPDATA%\FM27 Manager\fm27-manager.exe`):
   1. Stop the installed app (allowed without asking). The dev exe has the same process name: only kill the one under `%LOCALAPPDATA%\FM27 Manager`.
   2. `npx tauri build`
-  3. `Start-Process "src-tauri\target\release\bundle\nsis\FM27 Manager_0.3.2_x64-setup.exe" -ArgumentList '/S' -Wait`
+  3. `Start-Process "src-tauri\target\release\bundle\nsis\FM27 Manager_0.4.0_x64-setup.exe" -ArgumentList '/S' -Wait`
   4. Check the exe's LastWriteTime.
   Do this when dev mode isn't running, or when the user asks for it.
 - Never take screenshots or steal focus: the user is often playing on the same machine.
@@ -49,7 +49,7 @@ The PATH in Claude Code sessions can be stale on this machine. Prefix commands w
 - `@/` alias → `src/`.
 - Window: standard mode is 1500 wide, 950–1300 high (`tauri.conf.json` + `src/lib/windowMode.ts`). Portrait mode is 1080×1920 on a vertical screen and lifts the limits.
 - Code comments are written in French. Match the style of the surrounding code.
-- Demo players are tagged `[demo]` at the start of their notes (`DEMO_MARKER`).
+- Demo players are tagged `[demo]` at the start of their notes (`DEMO_MARKER`). `randomSquad.ts` (`randomTeam(seed)`) builds random test teams: a real club from `RANDOM_CLUBS`, a pool of real players by profile/side, invented names per nationality.
 
 ## Git
 
