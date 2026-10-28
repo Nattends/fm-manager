@@ -313,14 +313,24 @@ describe('computeLineup', () => {
     expect(after.slots.find((s) => s.slot.id === 'dl')!.starter?.player.name).toBe('DD')
   })
 
-  it('glisser un remplaçant sur un poste le titularise et retire l\'exclusion', () => {
+  it('glisser un remplaçant sur un titulaire le remplace : le titulaire sort du XI', () => {
+    const bu = squad.find((p) => p.name === 'BU')!
     const bu2 = squad.find((p) => p.name === 'BU2')!
     const lineup = computeLineup(defaultTacticSlots(f), squad, DEFAULT_ROLES, [bu2.id])
     const a = placePlayer(lineup, [bu2.id], bu2.id, 'st')
-    expect(a.excludedPlayerIds).toEqual([])
+    expect(a.excludedPlayerIds).toEqual([bu.id])
     const after = computeLineup(a.slots, squad, DEFAULT_ROLES, a.excludedPlayerIds)
     expect(after.slots.find((s) => s.slot.id === 'st')!.starter?.player.name).toBe('BU2')
-    expect(after.bench.map((p) => p.name)).toEqual(['BU'])
+    expect(after.slots.some((s) => s.starter?.player.name === 'BU')).toBe(false)
+    // Les autres postes ne bougent pas.
+    expect(after.slots.filter((s) => s.slot.id !== 'st').map((s) => s.starter?.player.name))
+      .toEqual(lineup.slots.filter((s) => s.slot.id !== 'st').map((s) => s.starter?.player.name))
+  })
+
+  it('échanger deux titulaires n\'écarte personne', () => {
+    const lineup = computeLineup(defaultTacticSlots(f), squad, DEFAULT_ROLES)
+    const dg = squad.find((p) => p.name === 'DG')!
+    expect(placePlayer(lineup, [], dg.id, 'dr').excludedPlayerIds).toEqual([])
   })
 
   it('renvoyer un titulaire sur le banc le déverrouille et l\'écarte', () => {

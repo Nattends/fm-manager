@@ -284,7 +284,9 @@ export function computeLineup(
 
 /**
  * Place un joueur sur un poste (verrouillé). S'il venait d'un autre poste du XI,
- * le titulaire du poste visé prend sa place (échange).
+ * le titulaire du poste visé prend sa place (échange). S'il venait de l'effectif,
+ * il remplace le titulaire, qui sort du XI (écarté) au lieu d'être replacé
+ * automatiquement ailleurs, ce qui chamboulerait les autres postes.
  */
 export function placePlayer(lineup: Lineup, excludedPlayerIds: number[], playerId: number, targetSlotId: string): Assignment {
   const source = lineup.slots.find((s) => s.starter?.player.id === playerId)?.slot.id
@@ -297,7 +299,9 @@ export function placePlayer(lineup: Lineup, excludedPlayerIds: number[], playerI
     if (s.lockedPlayerId === playerId) return { ...s, lockedPlayerId: null }
     return s
   })
-  return { slots, excludedPlayerIds: excludedPlayerIds.filter((id) => id !== playerId) }
+  const excluded = excludedPlayerIds.filter((id) => id !== playerId)
+  if (!source && displaced !== null && !excluded.includes(displaced)) excluded.push(displaced)
+  return { slots, excludedPlayerIds: excluded }
 }
 
 /** Retire un joueur du XI : il ne sera plus choisi automatiquement pour cette tactique. */

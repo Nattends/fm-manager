@@ -281,7 +281,7 @@ export function TacticPage() {
           {/* Les deux phases : terrains côte à côte, même sur un écran vertical. */}
           <div className="flex min-h-0 min-w-0 flex-1 gap-3">
             {(both ? PHASES : [phase]).map((ph) => (
-              <PitchView key={ph} phase={ph} lineup={lineups[ph]} view={views[ph]} roles={roles}
+              <PitchView key={ph} phase={ph} lineup={lineups[ph]} view={views[ph]} roles={roles} starterIds={starterIds}
                 big={big} rotated={rotated} compact={both}
                 label={both ? `${t.tactic.phase[ph]} · ${summarizeLineup(lineups[ph]).phases[ph].toFixed(0)}` : null}
                 movingId={dragged?.kind === 'card' && dragged.phase === ph ? dragged.slot.slot.id : null}
@@ -473,12 +473,14 @@ function BackupsList({ lineup, onOpen }: { lineup: Lineup; onOpen: (id: number) 
 }
 
 /** Un terrain (une phase de jeu) : marquages, cartes de poste et cases de dépôt pendant un déplacement. */
-function PitchView({ phase, lineup, view, roles, big, rotated, compact, label, movingId, acceptsPlayers, onRole, onDuty, onToggleLock, onOpen }: {
+function PitchView({ phase, lineup, view, roles, starterIds, big, rotated, compact, label, movingId, acceptsPlayers, onRole, onDuty, onToggleLock, onOpen }: {
   phase: Phase
   lineup: Lineup
   /** Postes vus dans cette phase. */
   view: TacticSlot[]
   roles: RoleDefinition[]
+  /** Titulaires (pour distinguer échange et remplacement au survol). */
+  starterIds: Set<number>
   big: boolean
   rotated: boolean
   /** Deux terrains côte à côte : cartes réduites. */
@@ -525,7 +527,7 @@ function PitchView({ phase, lineup, view, roles, big, rotated, compact, label, m
           <PitchLines big={rotated} ratio={ratio} />
           {movingId && <CellGrid phase={phase} slots={view} movingId={movingId} big={rotated} />}
           {lineup.slots.map((s) => (
-            <SlotCard key={s.slot.id} phase={phase} slot={s} roles={roles} big={big} rotated={rotated} compact={compact}
+            <SlotCard key={s.slot.id} phase={phase} slot={s} roles={roles} starterIds={starterIds} big={big} rotated={rotated} compact={compact}
               acceptsPlayers={acceptsPlayers}
               onRole={(roleId) => onRole(s.slot.id, roleId)}
               onDuty={(duty) => onDuty(s.slot.id, duty)}
@@ -586,10 +588,11 @@ function DraggablePlayer({ id, playerId, children }: { id: string; playerId: num
   )
 }
 
-function SlotCard({ phase, slot, roles, big, rotated, compact, acceptsPlayers, onRole, onDuty, onToggleLock, onOpen }: {
+function SlotCard({ phase, slot, roles, starterIds, big, rotated, compact, acceptsPlayers, onRole, onDuty, onToggleLock, onOpen }: {
   phase: Phase
   slot: LineupSlot
   roles: RoleDefinition[]
+  starterIds: Set<number>
   /** Grande vue : cartes agrandies. */
   big: boolean
   /** Terrain horizontal (grande vue sur écran paysage). */
@@ -604,7 +607,7 @@ function SlotCard({ phase, slot, roles, big, rotated, compact, acceptsPlayers, o
   onOpen: (playerId: number) => void
 }) {
   const { t } = useI18n()
-  const { setNodeRef, isOver } = useDroppable({ id: `:`, disabled: !acceptsPlayers })
+  const { setNodeRef, isOver, active } = useDroppable({ id: `${SLOT_PREFIX}${phase}:${slot.slot.id}`, disabled: !acceptsPlayers })
   const position = slot.slot.position
   const isGk = position === 'GK'
   const {
@@ -612,6 +615,11 @@ function SlotCard({ phase, slot, roles, big, rotated, compact, acceptsPlayers, o
   } = useDraggable({ id: `card-${phase}-${slot.slot.id}`, data: { kind: 'card', slotId: slot.slot.id, phase } satisfies DragData, disabled: isGk })
 
   const starter = slot.starter
+  // Survol par un joueur : échange s'il est titulaire, sinon il remplace le titulaire (qui sort du XI).
+  const hovering = isOver ? (active?.data.current as DragData | undefined) : undefined
+  const dropHint = hovering?.kind === 'player' && starter && hovering.playerId !== starter.player.id
+    ? (starterIds.has(hovering.playerId) ? t.tactic.swap : t.tactic.replace(starter.player.name))
+    : null
   const fam = starter?.player.positions[position]
   const backup = slot.backups[0]
   const line = LINE_COLORS[lineColorOf(position)]
@@ -686,6 +694,12 @@ function SlotCard({ phase, slot, roles, big, rotated, compact, acceptsPlayers, o
         <div className={cn('flex items-center text-muted-foreground', s.body, s.meta)}>
           <PlayerAvatar player={{ name: '', photo: null, photoLookup: '' }} size={s.avatar} className="opacity-60" />
           <span>{t.tactic.dropHere}</span>
+        </div>
+      )}
+
+      {dropHint && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 truncate bg-amber-400 px-2 py-0.5 text-center text-[11px] font-semibold text-slate-950">
+          {dropHint}
         </div>
       )}
 
