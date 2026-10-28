@@ -71,40 +71,40 @@ interface DemoEntry {
 
 const ENTRIES: DemoEntry[] = [
   // Gardiens
-  { name: 'Mike Maignan', age: 31, nationality: 'France', foot: 'right', positions: { GK: 20 }, archetype: 'gk', level: 17, status: 'key', stars: [4.5, 4.5] },
-  { name: 'Jonas Halvorsen', age: 33, nationality: 'Norvège', foot: 'right', positions: { GK: 20 }, archetype: 'gk', level: 13, status: 'rotation', stars: [3, 3] },
-  { name: 'Ilyes Benkhaled', age: 18, nationality: 'Algérie', foot: 'left', positions: { GK: 20 }, archetype: 'gk', level: 10, status: 'prospect', stars: [1.5, 4.5] },
+  { name: 'Mike Maignan', age: 31, nationality: 'fr', foot: 'right', positions: { GK: 20 }, archetype: 'gk', level: 17, status: 'key', stars: [4.5, 4.5] },
+  { name: 'Jonas Halvorsen', age: 33, nationality: 'no', foot: 'right', positions: { GK: 20 }, archetype: 'gk', level: 13, status: 'rotation', stars: [3, 3] },
+  { name: 'Ilyes Benkhaled', age: 18, nationality: 'dz', foot: 'left', positions: { GK: 20 }, archetype: 'gk', level: 10, status: 'prospect', stars: [1.5, 4.5] },
   // Défenseurs centraux
-  { name: 'William Saliba', age: 25, nationality: 'France', foot: 'right', positions: { DC: 20 }, archetype: 'cb', level: 18, status: 'key', stars: [5, 5] },
-  { name: 'Cristian Romero', age: 28, nationality: 'Argentine', foot: 'right', positions: { DC: 20, DR: 10 }, archetype: 'cb', level: 16, status: 'key', stars: [4, 4] },
-  { name: 'Kofi Asante', age: 22, nationality: 'Ghana', foot: 'right', positions: { DC: 20, DM: 14 }, archetype: 'cb', level: 13, status: 'rotation', stars: [3, 4] },
-  { name: 'Lukas Brenner', age: 31, nationality: 'Allemagne', foot: 'right', positions: { DC: 17, DR: 14 }, archetype: 'cb', level: 12, status: 'for_sale', stars: [2.5, 2.5] },
+  { name: 'William Saliba', age: 25, nationality: 'fr', foot: 'right', positions: { DC: 20 }, archetype: 'cb', level: 18, status: 'key', stars: [5, 5] },
+  { name: 'Cristian Romero', age: 28, nationality: 'ar', foot: 'right', positions: { DC: 20, DR: 10 }, archetype: 'cb', level: 16, status: 'key', stars: [4, 4] },
+  { name: 'Kofi Asante', age: 22, nationality: 'gh', foot: 'right', positions: { DC: 20, DM: 14 }, archetype: 'cb', level: 13, status: 'rotation', stars: [3, 4] },
+  { name: 'Lukas Brenner', age: 31, nationality: 'de', foot: 'right', positions: { DC: 17, DR: 14 }, archetype: 'cb', level: 12, status: 'for_sale', stars: [2.5, 2.5] },
   // Latéraux
-  { name: 'Nuno Mendes', age: 24, nationality: 'Portugal', foot: 'left', positions: { DL: 20, WBL: 17, ML: 10 }, archetype: 'fb', level: 16, status: 'key', stars: [4, 4.5] },
-  { name: 'Sami Lehtonen', age: 28, nationality: 'Finlande', foot: 'left', positions: { DL: 20, DC: 7 }, archetype: 'fb', level: 12, status: 'rotation', stars: [3, 3] },
-  { name: 'Achraf Hakimi', age: 27, nationality: 'Maroc', foot: 'right', positions: { DR: 20, WBR: 20, MR: 14 }, archetype: 'fb', level: 17, status: 'key', stars: [4.5, 4.5] },
-  { name: 'Nathan Cordier', age: 19, nationality: 'France', foot: 'right', positions: { DR: 17, DC: 10 }, archetype: 'fb', level: 11, status: 'prospect', stars: [2, 4.5] },
+  { name: 'Nuno Mendes', age: 24, nationality: 'pt', foot: 'left', positions: { DL: 20, WBL: 17, ML: 10 }, archetype: 'fb', level: 16, status: 'key', stars: [4, 4.5] },
+  { name: 'Sami Lehtonen', age: 28, nationality: 'fi', foot: 'left', positions: { DL: 20, DC: 7 }, archetype: 'fb', level: 12, status: 'rotation', stars: [3, 3] },
+  { name: 'Achraf Hakimi', age: 27, nationality: 'ma', foot: 'right', positions: { DR: 20, WBR: 20, MR: 14 }, archetype: 'fb', level: 17, status: 'key', stars: [4.5, 4.5] },
+  { name: 'Nathan Cordier', age: 19, nationality: 'fr', foot: 'right', positions: { DR: 17, DC: 10 }, archetype: 'fb', level: 11, status: 'prospect', stars: [2, 4.5] },
   // Milieux défensifs et centraux
-  { name: 'Rodri', age: 30, nationality: 'Espagne', foot: 'right', positions: { DM: 20, MC: 17, DC: 10 }, archetype: 'dm', level: 18, status: 'key', stars: [5, 5] },
-  { name: 'Moussa Diakhaté', age: 30, nationality: 'Sénégal', foot: 'right', positions: { DM: 20, DC: 14 }, archetype: 'dm', level: 14, status: 'rotation', stars: [3.5, 3.5] },
-  { name: 'Jude Bellingham', age: 23, nationality: 'Angleterre', foot: 'right', positions: { MC: 20, AMC: 20, DM: 10 }, archetype: 'amc', level: 18, status: 'key', stars: [5, 5] },
-  { name: 'Pedri', age: 23, nationality: 'Espagne', foot: 'right', positions: { MC: 20, AMC: 17, DM: 10 }, archetype: 'mc', level: 17, status: 'key', stars: [4.5, 5] },
-  { name: 'Erwan Le Goff', age: 21, nationality: 'France', foot: 'right', positions: { MC: 17, MR: 10 }, archetype: 'mc', level: 12, status: 'prospect', stars: [2.5, 4], entry: 'partial', note: 'Seulement quelques attributs saisis : note partielle (~).' },
+  { name: 'Rodri', age: 30, nationality: 'es', foot: 'right', positions: { DM: 20, MC: 17, DC: 10 }, archetype: 'dm', level: 18, status: 'key', stars: [5, 5] },
+  { name: 'Moussa Diakhaté', age: 30, nationality: 'sn', foot: 'right', positions: { DM: 20, DC: 14 }, archetype: 'dm', level: 14, status: 'rotation', stars: [3.5, 3.5] },
+  { name: 'Jude Bellingham', age: 23, nationality: 'gb-eng', foot: 'right', positions: { MC: 20, AMC: 20, DM: 10 }, archetype: 'amc', level: 18, status: 'key', stars: [5, 5] },
+  { name: 'Pedri', age: 23, nationality: 'es', foot: 'right', positions: { MC: 20, AMC: 17, DM: 10 }, archetype: 'mc', level: 17, status: 'key', stars: [4.5, 5] },
+  { name: 'Erwan Le Goff', age: 21, nationality: 'fr', foot: 'right', positions: { MC: 17, MR: 10 }, archetype: 'mc', level: 12, status: 'prospect', stars: [2.5, 4], entry: 'partial', note: 'Seulement quelques attributs saisis : note partielle (~).' },
   // Ailiers et meneurs
-  { name: 'Rodrygo', age: 25, nationality: 'Brésil', foot: 'right', positions: { AMR: 20, AML: 17, ST: 14 }, archetype: 'w', level: 17, status: 'key', stars: [4.5, 5] },
-  { name: 'Yanis Haddad', age: 23, nationality: 'Maroc', foot: 'left', positions: { AMR: 20, MR: 17 }, archetype: 'w', level: 15, status: 'rotation', stars: [3.5, 4.5] },
-  { name: 'Khvicha Kvaratskhelia', age: 25, nationality: 'Géorgie', foot: 'right', positions: { AML: 20, ML: 17, ST: 10 }, archetype: 'w', level: 17, status: 'key', stars: [4.5, 4.5] },
-  { name: 'Pavel Novák', age: 26, nationality: 'Tchéquie', foot: 'left', positions: { ML: 20, AML: 17, DL: 7 }, archetype: 'w', level: 13, status: 'rotation', stars: [3, 3] },
-  { name: 'Florian Wirtz', age: 23, nationality: 'Allemagne', foot: 'right', positions: { AMC: 20, AML: 17, MC: 14 }, archetype: 'amc', level: 17, status: 'rotation', stars: [4.5, 5] },
+  { name: 'Rodrygo', age: 25, nationality: 'br', foot: 'right', positions: { AMR: 20, AML: 17, ST: 14 }, archetype: 'w', level: 17, status: 'key', stars: [4.5, 5] },
+  { name: 'Yanis Haddad', age: 23, nationality: 'ma', foot: 'left', positions: { AMR: 20, MR: 17 }, archetype: 'w', level: 15, status: 'rotation', stars: [3.5, 4.5] },
+  { name: 'Khvicha Kvaratskhelia', age: 25, nationality: 'ge', foot: 'right', positions: { AML: 20, ML: 17, ST: 10 }, archetype: 'w', level: 17, status: 'key', stars: [4.5, 4.5] },
+  { name: 'Pavel Novák', age: 26, nationality: 'cz', foot: 'left', positions: { ML: 20, AML: 17, DL: 7 }, archetype: 'w', level: 13, status: 'rotation', stars: [3, 3] },
+  { name: 'Florian Wirtz', age: 23, nationality: 'de', foot: 'right', positions: { AMC: 20, AML: 17, MC: 14 }, archetype: 'amc', level: 17, status: 'rotation', stars: [4.5, 5] },
   // Attaquants
-  { name: 'Kylian Mbappé', age: 27, nationality: 'France', foot: 'right', positions: { ST: 20, AML: 20 }, archetype: 'st', level: 19, status: 'key', stars: [5, 5] },
-  { name: 'Erling Haaland', age: 26, nationality: 'Norvège', foot: 'left', positions: { ST: 20 }, archetype: 'st', level: 18, status: 'rotation', stars: [5, 5] },
-  { name: 'Bram de Wit', age: 24, nationality: 'Pays-Bas', foot: 'left', positions: { ST: 20 }, archetype: 'st', level: 14, status: 'rotation', stars: [3, 4] },
-  { name: 'Hugo Castell', age: 20, nationality: 'Espagne', foot: 'right', positions: { ST: 17, AMR: 10 }, archetype: 'st', level: 11, status: 'prospect', stars: [2, 4.5], entry: 'none', note: 'Aucun attribut saisi : pas de note (—).' },
-  { name: 'Victor Osimhen', age: 27, nationality: 'Nigeria', foot: 'right', positions: { ST: 20 }, archetype: 'st', level: 17, status: 'unavailable', stars: [4.5, 4.5], note: 'Blessé : indisponible, jamais choisi dans le XI.' },
+  { name: 'Kylian Mbappé', age: 27, nationality: 'fr', foot: 'right', positions: { ST: 20, AML: 20 }, archetype: 'st', level: 19, status: 'key', stars: [5, 5] },
+  { name: 'Erling Haaland', age: 26, nationality: 'no', foot: 'left', positions: { ST: 20 }, archetype: 'st', level: 18, status: 'rotation', stars: [5, 5] },
+  { name: 'Bram de Wit', age: 24, nationality: 'nl', foot: 'left', positions: { ST: 20 }, archetype: 'st', level: 14, status: 'rotation', stars: [3, 4] },
+  { name: 'Hugo Castell', age: 20, nationality: 'es', foot: 'right', positions: { ST: 17, AMR: 10 }, archetype: 'st', level: 11, status: 'prospect', stars: [2, 4.5], entry: 'none', note: 'Aucun attribut saisi : pas de note (—).' },
+  { name: 'Victor Osimhen', age: 27, nationality: 'ng', foot: 'right', positions: { ST: 20 }, archetype: 'st', level: 17, status: 'unavailable', stars: [4.5, 4.5], note: 'Blessé : indisponible, jamais choisi dans le XI.' },
   // Prêtés (hors effectif)
-  { name: 'Théo Marchand', age: 19, nationality: 'France', foot: 'right', positions: { MC: 20, DM: 14 }, archetype: 'mc', level: 12, status: 'prospect', stars: [2, 4], loanedTo: 'Stade Brestois', note: 'Prêté : hors effectif et des tactiques.' },
-  { name: 'Diego Ferreira', age: 21, nationality: 'Brésil', foot: 'left', positions: { AMR: 20, ST: 14 }, archetype: 'w', level: 18, status: 'rotation', stars: [3, 4.5], loanedTo: 'Girona', note: 'Prêté : jamais aligné, malgré une très bonne note.' },
+  { name: 'Théo Marchand', age: 19, nationality: 'fr', foot: 'right', positions: { MC: 20, DM: 14 }, archetype: 'mc', level: 12, status: 'prospect', stars: [2, 4], loanedTo: 'Stade Brestois', note: 'Prêté : hors effectif et des tactiques.' },
+  { name: 'Diego Ferreira', age: 21, nationality: 'br', foot: 'left', positions: { AMR: 20, ST: 14 }, archetype: 'w', level: 18, status: 'rotation', stars: [3, 4.5], loanedTo: 'Girona', note: 'Prêté : jamais aligné, malgré une très bonne note.' },
 ]
 
 /** Équipe de démo, moitié vrais joueurs (photos Transfermarkt), moitié joueurs inventés (avatar inconnu). */

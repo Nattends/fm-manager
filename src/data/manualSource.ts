@@ -1,8 +1,9 @@
 import Database from '@tauri-apps/plugin-sql'
 import { isAttributeKey } from '../domain/attributes'
 import { isRoleList } from '../domain/defaultRoles'
-import { normalizeTacticSlots } from '../domain/lineup'
-import type { Attributes, Club, NewPlayer, NewTactic, Player, RoleDefinition, Tactic } from '../domain/types'
+import { normalizeTacticSlots, widenLegacyGrid } from '../domain/lineup'
+import { PITCH_COLS } from '../domain/pitch'
+import type { Attributes, Club, NewPlayer, NewTactic, Player, RoleDefinition, Tactic, TacticSlot } from '../domain/types'
 import type { Backup, DataSource } from './dataSource'
 
 const DB_URL = 'sqlite:fm27.db'
@@ -46,6 +47,13 @@ interface TacticRow {
   slots: string
   excluded: string
   notes: string
+  /** Nombre de colonnes de la grille des slots enregistrés (5 avant les demi-espaces). */
+  grid: number
+}
+
+/** Slots enregistrés avec une grille à 5 couloirs : convertis en grille à 9 colonnes. */
+function slotsOnGrid(slots: Partial<TacticSlot>[], grid: number): Partial<TacticSlot>[] {
+  return grid < PITCH_COLS ? widenLegacyGrid(slots) : slots
 }
 
 let dbPromise: Promise<Database> | null = null
@@ -216,11 +224,11 @@ export class ManualSource implements DataSource {
 
   async listTactics(): Promise<Tactic[]> {
     const d = await db()
-    const rows = await d.select<TacticRow[]>('SELECT id, club_id, name, formation, slots, excluded, notes FROM tactics ORDER BY id')
-    return rows.map(({ excluded, club_id, ...r }) => ({
+    const rows = await d.select<TacticRow[]>('SELECT id, club_id, name, formation, slots, excluded, notes, grid FROM tactics ORDER BY id')
+    return rows.map(({ excluded, club_id, grid, ...r }) => ({
       ...r,
       clubId: club_id,
-      slots: normalizeTacticSlots(JSON.parse(r.slots), r.formation),
+      slots: normalizeTacticSlots(slotsOnGrid(JSON.parse(r.slots), grid), r.formation),
       excludedPlayerIds: JSON.parse(excluded),
     }))
   }
@@ -231,16 +239,16 @@ export class ManualSource implements DataSource {
     if (t.id === undefined) {
       if (t.clubId === undefined) throw new Error('clubId manquant pour une nouvelle tactique')
       const res = await d.execute(
-        'INSERT INTO tactics (name, formation, slots, excluded, notes, club_id) VALUES ($1, $2, $3, $4, $5, $6)',
-        [...params, t.clubId],
+        'INSERT INTO tactics (name, formation, slots, excluded, notes, club_id, grid) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+        [...params, t.clubId, PITCH_COLS],
       )
       return { ...t, id: res.lastInsertId as number, clubId: t.clubId }
     }
     await d.execute(
       `UPDATE tactics SET name = $1, formation = $2, slots = $3, excluded = $4, notes = $5,
-         updated_at = datetime('now')
+         grid = $7, updated_at = datetime('now')
        WHERE id = $6`,
-      [...params, t.id],
+      [...params, t.id, PITCH_COLS],
     )
     const [row] = await d.select<{ club_id: number }[]>('SELECT club_id FROM tactics WHERE id = $1', [t.id])
     return { ...t, id: t.id, clubId: row?.club_id ?? t.clubId! }
@@ -276,7 +284,7 @@ export class ManualSource implements DataSource {
   async exportAll(): Promise<Backup> {
     return {
       app: 'fm27-manager',
-      version: 2,
+      version: 3,
       exportedAt: new Date().toISOString(),
       clubs: await this.listClubs(),
       players: await this.listPlayers(),
@@ -286,7 +294,7 @@ export class ManualSource implements DataSource {
   }
 
   async importAll(backup: Backup): Promise<void> {
-    if (backup.app !== 'fm27-manager' || (backup.version !== 1 && backup.version !== 2)) {
+    if (backup.app !== 'fm27-manager' || ![1, 2, 3].includes(backup.version)) {
       throw new Error(INVALID_BACKUP)
     }
     const d = await db()
@@ -312,7 +320,8 @@ export class ManualSource implements DataSource {
         ...t,
         id: undefined,
         clubId: clubOf(t.clubId),
-        slots: normalizeTacticSlots(t.slots, t.formation).map((s) => ({
+        // Sauvegardes version 1 et 2 : grille à 5 couloirs.
+        slots: normalizeTacticSlots(slotsOnGrid(t.slots, backup.version < 3 ? 5 : PITCH_COLS), t.formation).map((s) => ({
           ...s,
           lockedPlayerId: s.lockedPlayerId !== null ? (idMap.get(s.lockedPlayerId) ?? null) : null,
         })),

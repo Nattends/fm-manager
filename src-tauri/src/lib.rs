@@ -38,6 +38,12 @@ fn migrations() -> Vec<Migration> {
       sql: include_str!("../migrations/006_clubs.sql"),
       kind: MigrationKind::Up,
     },
+    Migration {
+      version: 7,
+      description: "grille avec demi-espaces",
+      sql: include_str!("../migrations/007_tactic_grid.sql"),
+      kind: MigrationKind::Up,
+    },
   ]
 }
 

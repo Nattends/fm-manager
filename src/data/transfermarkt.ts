@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { pickClub, type ClubCandidate } from '../domain/clubMatch'
+import { englishNationality } from '../domain/nationalities'
 import { pickCandidate, type PhotoCandidate } from '../domain/photoMatch'
 import type { Player } from '../domain/types'
 
@@ -51,7 +52,8 @@ function toDataUrl(bytes: ArrayBuffer, url: string): string {
  */
 export async function findTransfermarktPhoto(player: Pick<Player, 'name' | 'age' | 'nationality'>): Promise<string | null> {
   const html = new TextDecoder().decode(await get(SEARCH_URL + encodeURIComponent(player.name.trim())))
-  const match = pickCandidate(player, parseSearchResults(html))
+  // Nationalité enregistrée en code (« br ») : Transfermarkt affiche le nom anglais.
+  const match = pickCandidate({ ...player, nationality: englishNationality(player.nationality) }, parseSearchResults(html))
   if (!match?.photoUrl) return null
   // Plus grande version de la même photo ; repli sur la petite si elle n'existe pas.
   const large = match.photoUrl.replace('/portrait/small/', '/portrait/header/')

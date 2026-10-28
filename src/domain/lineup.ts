@@ -3,7 +3,7 @@ import {
   CUSTOM_FORMATION_ID, getFormation, makeSlot, matchPreset, type Formation, type FormationSlot,
 } from './formations'
 import { hungarianMax } from './hungarian'
-import { formationName, isFieldCell, positionAt } from './pitch'
+import { formationName, isFieldCell, laneCol, positionAt } from './pitch'
 import type { Position } from './positions'
 import { rateRole, type RoleRating } from './rating'
 import type { Phase, Player, RoleDefinition, SlotShape, TacticSlot } from './types'
@@ -126,7 +126,7 @@ export function layoutName(slots: TacticSlot[]): { presetId: string; shape: stri
  */
 export function moveSlot(slots: TacticSlot[], slotId: string, row: number, col: number, roles: RoleDefinition[]): TacticSlot[] {
   const moving = slots.find((s) => s.slotId === slotId)
-  if (!moving || !isFieldCell(row, col) || !isFieldCell(moving.row, moving.col)) return slots
+  if (!moving || !isFieldCell(moving.row, moving.col) || !canPlace(slots, slotId, row, col)) return slots
   if (moving.row === row && moving.col === col) return slots
   const occupant = slots.find((s) => s.row === row && s.col === col)
 
@@ -144,6 +144,28 @@ export function moveSlot(slots: TacticSlot[], slotId: string, row: number, col: 
     if (occupant && s.slotId === occupant.slotId) return relocate(s, moving.row, moving.col)
     return s
   })
+}
+
+/**
+ * Une carte peut aller sur une case de champ si aucune autre carte n'occupe une colonne
+ * voisine sur la même ligne (les cartes se chevaucheraient). Une case occupée reste
+ * possible : les deux cartes échangent leur place.
+ */
+export function canPlace(slots: TacticSlot[], slotId: string, row: number, col: number): boolean {
+  if (!isFieldCell(row, col)) return false
+  return !slots.some((s) => s.slotId !== slotId && s.row === row && Math.abs(s.col - col) === 1)
+}
+
+/**
+ * Tactiques enregistrées avec l'ancienne grille à 5 couloirs (avant les demi-espaces) :
+ * chaque couloir devient sa colonne dans la grille à 9 colonnes.
+ */
+export function widenLegacyGrid(slots: Partial<TacticSlot>[]): Partial<TacticSlot>[] {
+  return slots.map((s) => ({
+    ...s,
+    ...(s.col !== undefined ? { col: laneCol(s.col) } : {}),
+    ...(s.oop ? { oop: { ...s.oop, col: laneCol(s.oop.col) } } : {}),
+  }))
 }
 
 /**

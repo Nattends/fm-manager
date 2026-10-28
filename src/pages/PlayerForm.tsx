@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { SectionTitle } from '@/components/layout'
+import { NationalityPicker } from '@/components/Nationality'
 import { attrColor, familiarityFill } from '@/components/styles'
 import { ATTRIBUTE_GROUP_IDS, attributesOf, type AttributeKey } from '@/domain/attributes'
 import { FAMILIARITY_LEVELS, POSITION_GRID, type Position } from '@/domain/positions'
@@ -95,7 +96,7 @@ export function PlayerForm({ player, onClose, onSaved }: { player?: Player; onCl
                       <Input type="number" min={14} max={45} value={draft.age} onChange={(e) => set('age', Number(e.target.value))} />
                     </Field>
                     <Field label={t.player.nationality}>
-                      <Input value={draft.nationality} onChange={(e) => set('nationality', e.target.value)} />
+                      <NationalityPicker value={draft.nationality} onChange={(code) => set('nationality', code)} />
                     </Field>
                     <Field label={t.player.foot}>
                       <Select value={draft.foot} onValueChange={(v) => set('foot', v as Foot)}>

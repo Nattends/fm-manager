@@ -9,7 +9,13 @@ export function ClubLogo({ name, size = 18, className }: { name: string; size?: 
   const { clubLogo } = useStore()
   const logo = name.trim() ? clubLogo(name) : null
   if (logo) {
-    return <img src={logo} alt="" title={name} className={cn('shrink-0 object-contain', className)} style={{ width: size, height: size }} />
+    // Pastille claire derrière le logo : les écussons sombres (Tottenham…) restent lisibles sur le fond sombre.
+    return (
+      <span title={name} className={cn('inline-flex shrink-0 items-center justify-center rounded-md bg-slate-100 shadow-sm ring-1 ring-black/10', className)}
+        style={{ width: size, height: size, padding: Math.max(1, Math.round(size * 0.1)) }}>
+        <img src={logo} alt="" className="h-full w-full object-contain" />
+      </span>
+    )
   }
   return (
     <ShieldIcon className={cn('shrink-0 text-slate-600', logo === undefined && name.trim() && 'animate-pulse', className)}

@@ -1,12 +1,26 @@
 import type { Position } from './positions'
 
 /**
- * Grille du terrain façon FM : 6 lignes (0 = attaque … 5 = gardien) × 5 couloirs
- * (0 = gauche … 4 = droite). Le poste d'une carte est déterminé par sa case.
+ * Grille du terrain : 6 lignes (0 = attaque … 5 = gardien) × 9 colonnes (0 = gauche … 8 = droite).
+ * Les colonnes paires sont les 5 couloirs de FM (côté, axe gauche, axe, axe droit, côté) ;
+ * les colonnes impaires sont les demi-espaces entre deux couloirs. Le poste d'une carte
+ * est déterminé par sa case : un demi-espace compte comme un poste axial.
  */
 export const PITCH_ROWS = 6
-export const PITCH_COLS = 5
+export const PITCH_COLS = 9
 export const GK_ROW = 5
+/** Colonne du gardien (axe). */
+export const GK_COL = 4
+
+/** Colonne de la grille pour un couloir FM (0-4), utilisée par les formations prédéfinies. */
+export function laneCol(lane: number): number {
+  return lane * 2
+}
+
+/** Demi-espace : entre deux couloirs FM. */
+export function isHalfSpace(col: number): boolean {
+  return col % 2 === 1
+}
 
 export interface Cell {
   row: number
@@ -22,7 +36,7 @@ export function positionAt(row: number, col: number): Position | null {
     case 2: return wide ? (`M${wide}` as Position) : 'MC'
     case 3: return wide ? (`WB${wide}` as Position) : 'DM'
     case 4: return wide ? (`D${wide}` as Position) : 'DC'
-    case GK_ROW: return col === 2 ? 'GK' : null
+    case GK_ROW: return col === GK_COL ? 'GK' : null
     default: return null
   }
 }
@@ -32,8 +46,11 @@ export function isFieldCell(row: number, col: number): boolean {
   return row !== GK_ROW && positionAt(row, col) !== null
 }
 
-/** Couloirs espacés de 19,75 % : les cartes peuvent faire 19 % de large sans se chevaucher. */
-const COL_X = [10.5, 30.25, 50, 69.75, 89.5]
+/**
+ * Colonnes espacées de 9,875 % : deux cartes ne sont jamais dans des colonnes voisines
+ * (voir canPlace), elles peuvent donc faire 19 % de large sans se chevaucher.
+ */
+const COL_X = Array.from({ length: PITCH_COLS }, (_, i) => 10.5 + i * 9.875)
 const ROW_Y = [13, 29, 45, 61, 76, 92]
 
 /** Centre de la case en % du terrain. */

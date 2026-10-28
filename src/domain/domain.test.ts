@@ -4,8 +4,8 @@ import { DEFAULT_ROLES, DEFAULT_ROLE_BY_POSITION, isRoleList } from './defaultRo
 import { FORMATIONS, getFormation } from './formations'
 import { hungarianMax } from './hungarian'
 import {
-  benchPlayer, computeLineup, copyInPossession, defaultTacticSlots, layoutName, mergePhase, moveSlot, normalizeTacticSlots,
-  patchShape, phaseSlots, placePlayer, resolveRole, summarizeLineup,
+  benchPlayer, canPlace, computeLineup, copyInPossession, defaultTacticSlots, layoutName, mergePhase, moveSlot, normalizeTacticSlots,
+  patchShape, phaseSlots, placePlayer, resolveRole, summarizeLineup, widenLegacyGrid,
 } from './lineup'
 import { PITCH_COLS, PITCH_ROWS, formationName, positionAt } from './pitch'
 import { POSITIONS, isPosition, type Position } from './positions'
@@ -177,9 +177,13 @@ describe('grille et formations', () => {
 
   it('le poste découle de la case', () => {
     expect(positionAt(4, 0)).toBe('DL')
-    expect(positionAt(3, 2)).toBe('DM')
+    expect(positionAt(3, 4)).toBe('DM')
     expect(positionAt(0, 0)).toBeNull()
-    expect(positionAt(5, 1)).toBeNull()
+    expect(positionAt(5, 2)).toBeNull()
+    // Demi-espaces : postes axiaux.
+    expect(positionAt(1, 1)).toBe('AMC')
+    expect(positionAt(4, 7)).toBe('DC')
+    expect(positionAt(0, 1)).toBe('ST')
   })
 
   it('déplacer une carte change le poste, garde un rôle compatible et sinon prend le profil du poste', () => {
@@ -189,29 +193,48 @@ describe('grille et formations', () => {
     expect(a.find((s) => s.slotId === 'aml')).toMatchObject({ row: 2, col: 0, roleId: 'amrl' })
     expect(layoutName(a)).toEqual({ presetId: 'custom', shape: '4-2-1-2-1' })
     // Le MOC descend en MDC : rôle incompatible → profil MDC.
-    const b = moveSlot(slots, 'amc', 3, 2, DEFAULT_ROLES)
+    const b = moveSlot(slots, 'amc', 3, 4, DEFAULT_ROLES)
     expect(b.find((s) => s.slotId === 'amc')!.roleId).toBe('dm')
   })
 
   it('déposer une carte sur une case occupée échange les deux cartes', () => {
     const slots = defaultTacticSlots(getFormation('4-4-2'))
-    const a = moveSlot(slots, 'ml', 2, 1, DEFAULT_ROLES)
-    expect(a.find((s) => s.slotId === 'ml')).toMatchObject({ row: 2, col: 1 })
+    const a = moveSlot(slots, 'ml', 2, 2, DEFAULT_ROLES)
+    expect(a.find((s) => s.slotId === 'ml')).toMatchObject({ row: 2, col: 2 })
     expect(a.find((s) => s.slotId === 'mcl')).toMatchObject({ row: 2, col: 0 })
   })
 
   it('refuse de bouger le gardien ou d\'aller sur une case inexistante', () => {
     const slots = defaultTacticSlots(getFormation('4-4-2'))
-    expect(moveSlot(slots, 'gk', 4, 2, DEFAULT_ROLES)).toBe(slots)
+    expect(moveSlot(slots, 'gk', 4, 4, DEFAULT_ROLES)).toBe(slots)
     expect(moveSlot(slots, 'stl', 0, 0, DEFAULT_ROLES)).toBe(slots)
-    expect(moveSlot(slots, 'dcl', 5, 2, DEFAULT_ROLES)).toBe(slots)
+    expect(moveSlot(slots, 'dcl', 5, 4, DEFAULT_ROLES)).toBe(slots)
+  })
+
+  it('place une carte dans un demi-espace si les colonnes voisines sont libres', () => {
+    const slots = defaultTacticSlots(getFormation('4-3-3'))
+    // Ailier gauche (colonne 0) vers le demi-espace (colonne 1) : voisin de rien sur la ligne des MO.
+    const a = moveSlot(slots, 'aml', 1, 1, DEFAULT_ROLES)
+    expect(a.find((s) => s.slotId === 'aml')).toMatchObject({ row: 1, col: 1 })
+    expect(positionAt(1, 1)).toBe('AMC')
+    // Demi-espace entre DG (0) et DCG (2) : les cartes se chevaucheraient.
+    expect(canPlace(slots, 'dm', 4, 1)).toBe(false)
+    expect(moveSlot(slots, 'dm', 4, 1, DEFAULT_ROLES)).toBe(slots)
+  })
+
+  it('convertit les tactiques à 5 couloirs vers la grille à 9 colonnes', () => {
+    const legacy = [{ slotId: 'dl', row: 4, col: 0 }, { slotId: 'st', row: 0, col: 2, oop: { row: 1, col: 3, roleId: 'x', duty: 'auto' as const } }]
+    expect(widenLegacyGrid(legacy)).toEqual([
+      { slotId: 'dl', row: 4, col: 0 },
+      { slotId: 'st', row: 0, col: 4, oop: { row: 1, col: 6, roleId: 'x', duty: 'auto' } },
+    ])
   })
 
   it('complète les tactiques enregistrées sans cases', () => {
     const old = [{ slotId: 'st', roleId: 'str', duty: 'attack' as const, lockedPlayerId: 7 }]
     const slots = normalizeTacticSlots(old, '4-3-3')
     expect(slots).toHaveLength(11)
-    expect(slots.find((s) => s.slotId === 'st')).toMatchObject({ row: 0, col: 2, roleId: 'str', lockedPlayerId: 7 })
+    expect(slots.find((s) => s.slotId === 'st')).toMatchObject({ row: 0, col: 4, roleId: 'str', lockedPlayerId: 7 })
   })
 
   it('un ancien identifiant de rôle retombe sur le profil du poste', () => {

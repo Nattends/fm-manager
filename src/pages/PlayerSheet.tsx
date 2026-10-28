@@ -13,6 +13,7 @@ import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { LoanBadge, PositionChip, StatusBadge } from '@/components/chips'
 import { PlayerClub } from '@/components/ClubLogo'
+import { Nationality } from '@/components/Nationality'
 import { PositionPitch } from '@/components/PositionPitch'
 import { EmptyState, SectionTitle } from '@/components/layout'
 import { PlayerAvatar, RatingBadge, Stars } from '@/components/ui'
@@ -84,7 +85,11 @@ export function PlayerSheet({ playerId, onClose }: { playerId: number; onClose: 
               {player.onLoan && <LoanBadge club={player.club} />}
             </div>
             <DialogDescription className="text-sm text-muted-foreground">
-              {[t.player.ageValue(player.age), player.nationality, t.player.footValue(t.foot[player.foot])].filter(Boolean).join(' · ')}
+              <span className="inline-flex flex-wrap items-center gap-x-1.5">
+                {t.player.ageValue(player.age)}
+                {player.nationality.trim() && <> · <Nationality value={player.nationality} /></>}
+                {' · '}{t.player.footValue(t.foot[player.foot])}
+              </span>
             </DialogDescription>
             <PlayerClub player={player} size={22} className="text-sm font-medium text-slate-200" />
             <div className="flex flex-wrap gap-1.5">

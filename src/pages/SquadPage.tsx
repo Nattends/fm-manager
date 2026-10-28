@@ -16,9 +16,11 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { EmptyState, PageHeader } from '@/components/layout'
 import { PositionChip, StatusBadge } from '@/components/chips'
 import { PlayerClub } from '@/components/ClubLogo'
+import { Nationality } from '@/components/Nationality'
 import { PlayerAvatar, RatingBadge, Stars } from '@/components/ui'
 import { attrColor } from '@/components/styles'
 import { ATTRIBUTE_GROUP_IDS, attributesOf, type AttributeGroup, type AttributeKey } from '@/domain/attributes'
+import { nationalityLabel } from '@/domain/nationalities'
 import { POSITIONS, type Position } from '@/domain/positions'
 import { bestRole, type BestRole } from '@/domain/rating'
 import type { Player, PlayerStatus } from '@/domain/types'
@@ -35,6 +37,16 @@ interface Row {
 /** Familiarité minimale pour considérer qu'un joueur « joue » à un poste (Compétent). */
 const PLAYS_AT = 14
 const VISIBILITY_KEY = 'squad.columns'
+const VIEW_KEY = 'squad.view'
+type SquadView = 'all' | 'squad' | 'loaned'
+
+function loadView(): SquadView {
+  try {
+    const v = localStorage.getItem(VIEW_KEY)
+    if (v === 'all' || v === 'squad' || v === 'loaned') return v
+  } catch { /* stockage indisponible */ }
+  return 'squad'
+}
 const ALL = 'all'
 const STATUSES: PlayerStatus[] = ['key', 'rotation', 'prospect', 'for_sale', 'unavailable']
 const BASE_COLUMNS = ['age', 'nationality', 'club', 'positions', 'status', 'ca', 'pa', 'bestRole', 'contract', 'value', 'wage'] as const
@@ -55,7 +67,7 @@ function loadVisibility(): VisibilityState {
 
 export function SquadPage() {
   const { players, roles } = useStore()
-  const { t, roleName, money, date } = useI18n()
+  const { t, lang, roleName, money, date } = useI18n()
   const [search, setSearch] = useState('')
   const [position, setPosition] = useState<Position | typeof ALL>(ALL)
   const [status, setStatus] = useState<PlayerStatus | typeof ALL>(ALL)
@@ -64,8 +76,12 @@ export function SquadPage() {
   const [visibility, setVisibility] = useState<VisibilityState>(loadVisibility)
   const [creating, setCreating] = useState(false)
   const [openId, setOpenId] = useState<number | null>(null)
-  /** Effectif ou joueurs prêtés (hors effectif). */
-  const [view, setView] = useState<'squad' | 'loaned'>('squad')
+  /** Tous les joueurs du club, ceux présents au club ou ceux prêtés (hors effectif). */
+  const [view, setView] = useState<SquadView>(loadView)
+  const changeView = (v: SquadView) => {
+    setView(v)
+    try { localStorage.setItem(VIEW_KEY, v) } catch { /* ignoré */ }
+  }
   const loanedCount = players.filter((p) => p.onLoan).length
   const squadCount = players.length - loanedCount
 
@@ -85,13 +101,13 @@ export function SquadPage() {
     const q = search.trim().toLowerCase()
     const max = Number(ageMax)
     return players
-      .filter((p) => p.onLoan === (view === 'loaned'))
-      .filter((p) => !q || [p.name, p.nationality, p.club].some((s) => s.toLowerCase().includes(q)))
+      .filter((p) => view === 'all' || p.onLoan === (view === 'loaned'))
+      .filter((p) => !q || [p.name, nationalityLabel(p.nationality, lang), p.club].some((s) => s.toLowerCase().includes(q)))
       .filter((p) => position === ALL || (p.positions[position] ?? 0) >= PLAYS_AT)
       .filter((p) => status === ALL || p.status === status)
       .filter((p) => !ageMax || p.age <= max)
       .map((player) => ({ player, best: bestRole(player, roles) }))
-  }, [players, roles, view, search, position, status, ageMax])
+  }, [players, roles, view, lang, search, position, status, ageMax])
 
   const columns = useMemo(() => [
     col.accessor((r) => r.player.name, {
@@ -103,7 +119,7 @@ export function SquadPage() {
             <PlayerAvatar player={p} size={30} />
             <span className="min-w-0">
               <span className="block truncate font-medium text-slate-100">{p.name}</span>
-              {p.nationality && <span className="block truncate text-[11px] text-muted-foreground">{p.nationality}</span>}
+              <Nationality value={p.nationality} className="flex text-[11px] text-muted-foreground" />
             </span>
           </span>
         )
@@ -111,7 +127,10 @@ export function SquadPage() {
       sortingFn: (a, b) => a.original.player.name.localeCompare(b.original.player.name, t.locale),
     }),
     col.accessor((r) => r.player.age, { id: 'age', header: t.squad.col.age }),
-    col.accessor((r) => r.player.nationality, { id: 'nationality', header: t.squad.col.nationality }),
+    col.accessor((r) => nationalityLabel(r.player.nationality, lang), {
+      id: 'nationality', header: t.squad.col.nationality,
+      cell: (c) => <Nationality value={c.row.original.player.nationality} />,
+    }),
     col.accessor((r) => (r.player.onLoan ? r.player.club : ''), {
       id: 'club', header: t.squad.col.club,
       cell: (c) => <PlayerClub player={c.row.original.player} className="max-w-56 text-slate-300" />,
@@ -160,7 +179,7 @@ export function SquadPage() {
         }),
       ),
     ),
-  ], [t, roleName, money, date])
+  ], [t, lang, roleName, money, date])
 
   // oxlint-disable-next-line react/incompatible-library -- TanStack Table v8, mémoïsation gérée par la table
   const table = useReactTable({
@@ -181,7 +200,8 @@ export function SquadPage() {
       <PageHeader title={t.squad.title} count={t.squad.count(squadCount)}
         actions={<Button onClick={() => setCreating(true)}><PlusIcon />{t.squad.addPlayer}</Button>}>
         <ToggleGroup type="single" variant="outline" size="sm" value={view}
-          onValueChange={(v) => v && setView(v as 'squad' | 'loaned')}>
+          onValueChange={(v) => v && changeView(v as SquadView)}>
+          <ToggleGroupItem value="all">{t.squad.viewAll(players.length)}</ToggleGroupItem>
           <ToggleGroupItem value="squad">{t.squad.viewSquad(squadCount)}</ToggleGroupItem>
           <ToggleGroupItem value="loaned">{t.squad.viewLoaned(loanedCount)}</ToggleGroupItem>
         </ToggleGroup>
