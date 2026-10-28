@@ -256,6 +256,16 @@ export const fr: Messages = {
     source: { notebook: 'notebook', fm: 'FM', custom: 'perso' },
     totalWeightLabel: 'Poids total',
   },
+  updates: {
+    title: 'Mises à jour',
+    text: (v) => `Version ${v || '…'}. Les nouvelles versions sont compilées sur GitHub et recherchées au démarrage.`,
+    check: 'Rechercher les mises à jour',
+    available: (v) => `La version ${v} est disponible`,
+    install: 'Installer',
+    downloading: (p) => (p === null ? 'Téléchargement de la mise à jour…' : `Téléchargement de la mise à jour… ${p} %`),
+    upToDate: (v) => `Tu as la dernière version (${v})`,
+    failed: (e) => `Mise à jour impossible : ${e}`,
+  },
   settings: {
     title: 'Paramètres',
     language: 'Langue',

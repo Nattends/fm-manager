@@ -1,6 +1,6 @@
 [package]
 name = "fm27-manager"
-version = "0.6.0"
+version = "0.7.0"
 description = "Gestion d'équipe pour Football Manager 27"
 authors = ["Nathan"]
 license = ""
@@ -27,3 +27,7 @@ tauri-plugin-sql = { version = "2", features = ["sqlite"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+tauri-plugin-process = "2"
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-updater = "2"

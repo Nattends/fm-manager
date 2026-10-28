@@ -1,10 +1,12 @@
 import { Loader2Icon, MonitorIcon, SmartphoneIcon } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
+import { checkForUpdate } from '@/lib/updates'
 import { applyWindowMode, loadSizeLock, loadWindowMode, setSizeLock, type WindowMode } from '@/lib/windowMode'
 import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { ClubSwitcher } from '@/components/ClubSwitcher'
+import { offerUpdate } from '@/components/updateToast'
 import { useI18n } from './i18n'
 import { LANGUAGES } from './i18n/languages'
 import { RolesPage } from './pages/RolesPage'
@@ -44,6 +46,16 @@ export default function App() {
     if (loadWindowMode() === 'portrait') applyWindowMode('portrait').catch((e) => console.warn('Mode portrait', e))
     else if (!loadSizeLock()) setSizeLock(false).catch((e) => console.warn('Taille de fenêtre libre', e))
   }, [])
+
+  // Au démarrage de l'appli installée, recherche d'une nouvelle version sur GitHub (pas en mode dev).
+  const updateChecked = useRef(false)
+  useEffect(() => {
+    if (import.meta.env.DEV || updateChecked.current) return
+    updateChecked.current = true
+    checkForUpdate()
+      .then((u) => u && offerUpdate(u, t))
+      .catch((e) => console.warn('Recherche de mise à jour impossible', e))
+  }, [t])
 
   const toggleWindowMode = () => {
     const next: WindowMode = windowMode === 'portrait' ? 'standard' : 'portrait'

@@ -95,4 +95,6 @@ src-tauri/     Application Rust : plugins, migrations SQL, commande transfermark
 
 ## Versions
 
-Les versions sont marquées par des tags git (`v0.1.0`, `v0.2.0`, …), avec une [release GitHub](https://github.com/Nattends/fm-manager/releases) et son installateur Windows. Voir `git tag -n` pour le résumé de chacune.
+Les versions sont marquées par des tags git annotés (`v0.1.0`, `v0.2.0`, …). Pousser un tag `vX.Y.Z` lance **GitHub Actions** (`.github/workflows/release.yml`) : vérifications, compilation des installateurs Windows et publication de la [release GitHub](https://github.com/Nattends/fm-manager/releases), avec pour titre et notes le message du tag.
+
+L'appli installée **se met à jour toute seule** : au démarrage, elle vérifie la dernière release et propose de l'installer (Settings › Mises à jour pour vérifier à la main). Les mises à jour sont signées : la clé privée (`~/.tauri/fm27-manager.key`) est aussi enregistrée dans le secret `TAURI_SIGNING_PRIVATE_KEY` du dépôt.

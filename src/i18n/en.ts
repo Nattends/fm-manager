@@ -262,6 +262,16 @@ export const en = {
     source: { notebook: 'notebook', fm: 'FM', custom: 'custom' },
     totalWeightLabel: 'Total weight',
   },
+  updates: {
+    title: 'Updates',
+    text: (v: string) => `Version ${v || '…'}. New versions are built on GitHub and checked at startup.`,
+    check: 'Check for updates',
+    available: (v: string) => `Version ${v} is available`,
+    install: 'Install',
+    downloading: (p: number | null) => (p === null ? 'Downloading the update…' : `Downloading the update… ${p}%`),
+    upToDate: (v: string) => `You have the latest version (${v})`,
+    failed: (e: string) => `Update failed: ${e}`,
+  },
   settings: {
     title: 'Settings',
     language: 'Language',

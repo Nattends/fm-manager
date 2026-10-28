@@ -81,6 +81,9 @@ async fn transfermarkt_get(url: String) -> Result<tauri::ipc::Response, String> 
 pub fn run() {
   tauri::Builder::default()
     .invoke_handler(tauri::generate_handler![transfermarkt_get])
+    // Mises à jour depuis les releases GitHub (signées), puis redémarrage de l'appli.
+    .plugin(tauri_plugin_updater::Builder::new().build())
+    .plugin(tauri_plugin_process::init())
     .plugin(
       tauri_plugin_sql::Builder::default()
         .add_migrations("sqlite:fm27.db", migrations())

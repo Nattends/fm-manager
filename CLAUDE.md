@@ -11,10 +11,12 @@ The PATH in Claude Code sessions can be stale on this machine. Prefix commands w
 
 - `npx tsc -b`, `npx vitest run`, `npx oxlint`: run all three after every change (they must stay clean; one known warning in `src/store.tsx`).
 - `npm run tauri dev`: hot-reload dev app (run in background). While it runs, front-end edits apply live: **don't rebuild after each change**.
-- Full build + update of the installed app (what the user launches, `%LOCALAPPDATA%\FM27 Manager\fm27-manager.exe`):
+- **Releases are built by GitHub Actions** (`.github/workflows/release.yml`) on every pushed `vX.Y.Z` tag: it runs tsc + vitest, builds the NSIS/MSI installers, signs the updater artifacts and publishes the release with `latest.json`. The release title is the tag message's first line, the notes are the rest (Markdown). Routine for a new version: bump the version (3 files + package-lock), commit, `git tag -a vX.Y.Z -F <message file>`, `git push origin main`, `git push origin vX.Y.Z`. Don't build locally.
+- The installed app updates itself (tauri-plugin-updater): at startup it reads `https://github.com/Nattends/fm-manager/releases/latest/download/latest.json`, offers the update in a toast, installs it (passive NSIS) and relaunches. Settings › Updates has a manual check. The signing private key is `~/.tauri/fm27-manager.key` (no password), also stored in the repo secret `TAURI_SIGNING_PRIVATE_KEY`; the public key is in `tauri.conf.json` (`plugins.updater.pubkey`). Losing the private key breaks updates.
+- Local build (only if needed, e.g. CI down): set `$env:TAURI_SIGNING_PRIVATE_KEY = Get-Content ~/.tauri/fm27-manager.key -Raw` first (createUpdaterArtifacts needs it), then:
   1. Stop the installed app (allowed without asking). The dev exe has the same process name: only kill the one under `%LOCALAPPDATA%\FM27 Manager`.
   2. `npx tauri build`
-  3. `Start-Process "src-tauri\target\release\bundle\nsis\FM27 Manager_0.6.0_x64-setup.exe" -ArgumentList '/S' -Wait`
+  3. `Start-Process "src-tauri\target\release\bundle\nsis\FM27 Manager_0.7.0_x64-setup.exe" -ArgumentList '/S' -Wait`
   4. Check the exe's LastWriteTime.
   Do this when dev mode isn't running, or when the user asks for it.
 - Never take screenshots or steal focus: the user is often playing on the same machine.

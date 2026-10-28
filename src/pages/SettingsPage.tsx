@@ -1,10 +1,11 @@
 import { open, save } from '@tauri-apps/plugin-dialog'
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
-import { DicesIcon, DownloadIcon, Loader2Icon, UploadIcon, UsersIcon, UserMinusIcon } from 'lucide-react'
-import { useState } from 'react'
+import { DicesIcon, DownloadIcon, Loader2Icon, RefreshCwIcon, UploadIcon, UsersIcon, UserMinusIcon } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { askConfirm } from '@/lib/confirm'
 import { LOGO_STYLES, setLogoStyle, useLogoStyle } from '@/lib/logoStyle'
+import { appVersion, checkForUpdate } from '@/lib/updates'
 import { cn } from '@/lib/utils'
 import { loadSizeLock, setSizeLock } from '@/lib/windowMode'
 import { Button } from '@/components/ui/button'
@@ -12,6 +13,7 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ClubLogo } from '@/components/ClubLogo'
+import { offerUpdate } from '@/components/updateToast'
 import { PageHeader, Panel } from '@/components/layout'
 import type { Backup } from '@/data/dataSource'
 import { INVALID_BACKUP } from '@/data/manualSource'
@@ -27,6 +29,24 @@ export function SettingsPage() {
   const { t, lang, setLang } = useI18n()
   const [demoBusy, setDemoBusy] = useState(false)
   const [sizeLocked, setSizeLocked] = useState(loadSizeLock)
+  const [version, setVersion] = useState('')
+  const [checking, setChecking] = useState(false)
+  useEffect(() => {
+    appVersion().then(setVersion).catch(() => setVersion('?'))
+  }, [])
+
+  const checkUpdates = async () => {
+    setChecking(true)
+    try {
+      const update = await checkForUpdate()
+      if (update) offerUpdate(update, t)
+      else toast.success(t.updates.upToDate(version))
+    } catch (e) {
+      toast.error(t.updates.failed(String(e)))
+    } finally {
+      setChecking(false)
+    }
+  }
 
   const toggleSizeLock = (locked: boolean) => {
     setSizeLocked(locked)
@@ -144,6 +164,13 @@ export function SettingsPage() {
                 </button>
               ))}
             </div>
+          </Panel>
+
+          <Panel title={t.updates.title}>
+            <p className="mb-3 text-[13px] leading-relaxed text-muted-foreground">{t.updates.text(version)}</p>
+            <Button variant="outline" onClick={checkUpdates} disabled={checking}>
+              {checking ? <Loader2Icon className="animate-spin" /> : <RefreshCwIcon />}{t.updates.check}
+            </Button>
           </Panel>
 
           <Panel title={t.settings.dataSource}>
