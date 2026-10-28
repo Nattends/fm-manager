@@ -14,7 +14,7 @@ The PATH in Claude Code sessions can be stale on this machine. Prefix commands w
 - Full build + update of the installed app (what the user launches, `%LOCALAPPDATA%\FM27 Manager\fm27-manager.exe`):
   1. Stop the installed app (allowed without asking). The dev exe has the same process name: only kill the one under `%LOCALAPPDATA%\FM27 Manager`.
   2. `npx tauri build`
-  3. `Start-Process "src-tauri\target\release\bundle\nsis\FM27 Manager_0.2.0_x64-setup.exe" -ArgumentList '/S' -Wait`
+  3. `Start-Process "src-tauri\target\release\bundle\nsis\FM27 Manager_0.3.0_x64-setup.exe" -ArgumentList '/S' -Wait`
   4. Check the exe's LastWriteTime.
   Do this when dev mode isn't running, or when the user asks for it.
 - Never take screenshots or steal focus: the user is often playing on the same machine.
@@ -25,8 +25,9 @@ The PATH in Claude Code sessions can be stale on this machine. Prefix commands w
   - `rating.ts`: weighted attribute average (1-20) → `RATING_CURVE` (score /100) × `FAMILIARITY_CURVE` factor (never played ×0.5). Stars (CA/PA) are **not** used in ratings.
   - `lineup.ts`: `computeLineup` (locked players first, then Hungarian assignment maximising the overall score = mean of the in-possession and out-of-possession ratings), `placePlayer` / `benchPlayer` / `moveSlot`, `summarizeLineup`, `lineOf`.
   - Phases: a `TacticSlot`'s `row/col/roleId/duty` are the **in-possession** shape and `oop` the **out-of-possession** shape (same player). UI edits go through `phaseSlots` (view of a phase) → existing helpers (`moveSlot`…) → `mergePhase` / `patchShape`. `normalizeTacticSlots` fills `oop` for older tactics.
-  - `pitch.ts`: FM grid of 6 rows (0 = ST … 5 = GK) × 5 lanes; a card's position comes from its cell (`positionAt`).
+  - `pitch.ts`: grid of 6 rows (0 = ST … 5 = GK) × 9 columns: even columns are FM's 5 lanes (`laneCol`), odd ones are half-spaces (`isHalfSpace`, central position of the row). A card's position comes from its cell (`positionAt`). `canPlace` (lineup.ts) forbids two cards in neighbouring columns of a row (they would overlap). Tactics saved with the old 5-lane grid (`tactics.grid = 5`, backups < v3) go through `widenLegacyGrid`.
   - `defaultRoles.ts`: `NOTEBOOK_ROLES` (10 profiles) + `FM_ROLES` (`fmRoles.ts`, generated from the user's `roles.json`: FM24 roles, weights 5/3/1, ids prefixed `fm-`). `DEFAULT_ROLE_BY_POSITION` picks the default role per position.
+  - `nationalities.ts`: nationality = flag-icons code (`fr`, `gb-eng`…), names from `Intl.DisplayNames`; `nationCode` also resolves old free-text values (« Brésil »). Photo search compares the English name.
   - `clubMatch.ts`: picks the Transfermarkt club for a name (exact name, then all words, skipping reserve/youth teams unless asked).
   - `photoMatch.ts`: picks the Transfermarkt candidate (name tokens, age gap −1…+10, nationality preferred; French country names mapped via `Intl.DisplayNames`).
 - `src/data/`: the `DataSource` interface is implemented by `ManualSource` (SQLite). A future `MemorySource` (reading FM27 memory) must implement the same interface. `transfermarkt.ts` fetches through the Rust command `transfermarkt_get` (host whitelist in `src-tauri/src/lib.rs`).

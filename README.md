@@ -8,11 +8,12 @@ La saisie est **manuelle** pour l'instant (l'export Ctrl+P n'existe plus dans FM
 
 ### Clubs
 - **Plusieurs clubs**, un par partie de FM : chacun a son effectif et ses tactiques (les rôles sont communs). Choix du club dans la barre du haut ; création, renommage, suppression.
-- **Logos Transfermarkt automatiques** d'après le nom du club (club géré comme clubs de prêt), mis en cache.
+- **Logos Transfermarkt automatiques** d'après le nom du club (club géré comme clubs de prêt), mis en cache, sur une pastille claire pour rester lisibles.
 
 ### Effectif
 - Tableau triable et filtrable (recherche, poste, statut, âge max), colonnes au choix (dont les 47 attributs), mémorisées. Colonne **Club** avec logo.
-- **Joueurs prêtés** : hors effectif (onglet « Prêtés ») et jamais alignés ; leur club d'accueil est affiché avec son logo.
+- Vue **Tous / Au club / Prêtés**. Les joueurs prêtés sont hors effectif et jamais alignés ; leur club d'accueil est affiché avec son logo.
+- **Nationalité avec drapeau**, choisie dans une liste alphabétique avec recherche (pays, nations britanniques, Kosovo).
 - Fiche joueur : photo, club, étoiles niveau actuel / potentiel, mini-terrain des postes coloré par familiarité, meilleur rôle, onglets **Attributs / Rôles / Contrat & notes**.
 - Formulaire avec infos de base obligatoires, attributs détaillés facultatifs et choix des postes sur un mini-terrain.
 - **Photos Transfermarkt automatiques** : recherche par nom, filtrée par âge et nationalité, mise en cache locale. Les joueurs générés par le jeu ou introuvables ont un avatar « inconnu ». Actions « Rechercher à nouveau » et « Mauvaise photo ».
@@ -24,8 +25,9 @@ La saisie est **manuelle** pour l'instant (l'export Ctrl+P n'existe plus dans FM
 - Écran **Roles** : liste groupée et filtrable, poids réglables au clic (×5 → ×3 → ×1 → ×0), postes du rôle.
 
 ### Tactique
-- **Avec ballon / sans ballon** : chaque poste a sa case et son rôle dans les deux phases (bouton pour recopier la phase avec ballon). Le meilleur XI maximise la moyenne des deux notes.
-- 8 formations prédéfinies, ou formation libre en **déplaçant les cartes de poste** sur la grille du terrain (6 lignes × 5 couloirs, comme FM).
+- **Avec ballon / sans ballon** : chaque poste a sa case et son rôle dans les deux phases (bouton pour recopier la phase avec ballon), et une vue **Les deux** affiche les deux terrains côte à côte. Le meilleur XI maximise la moyenne des deux notes.
+- **Demi-espaces** : en plus des 5 couloirs de FM, une carte peut se placer entre deux couloirs (poste axial de la ligne), tant qu'elle ne chevauche pas une voisine.
+- 8 formations prédéfinies, ou formation libre en **déplaçant les cartes de poste** sur la grille du terrain (6 lignes × 9 colonnes : 5 couloirs et 4 demi-espaces).
 - **Meilleur XI automatique** par affectation optimale (algorithme hongrois) qui maximise la somme des notes (moyenne avec / sans ballon). Joueurs verrouillés, écartés ou indisponibles respectés.
 - Glisser-déposer des joueurs (placement, échange, mise à l'écart), doublures par poste.
 - Cartes colorées par ligne : photo, note, familiarité au poste, rôle avec recherche, devoir, verrou, première doublure.
@@ -42,7 +44,7 @@ La saisie est **manuelle** pour l'instant (l'export Ctrl+P n'existe plus dans FM
 | Couche | Outils |
 |---|---|
 | Application de bureau | [Tauri 2](https://tauri.app) (Rust) : SQLite (`tauri-plugin-sql`), dialogues, fichiers, commande HTTP pour Transfermarkt |
-| Interface | React 19, TypeScript, Vite 8, Tailwind CSS v4, shadcn/ui (Radix), lucide-react |
+| Interface | React 19, TypeScript, Vite 8, Tailwind CSS v4, shadcn/ui (Radix), lucide-react, flag-icons |
 | Tableaux / glisser-déposer | TanStack Table v8, dnd-kit |
 | Qualité | Vitest, oxlint, `tsc` |
 
