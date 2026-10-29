@@ -2,7 +2,7 @@ import {
   createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, useReactTable,
   type SortingState, type VisibilityState,
 } from '@tanstack/react-table'
-import { ArrowDownIcon, ArrowUpIcon, Columns3Icon, PlusIcon, SearchIcon, XIcon } from 'lucide-react'
+import { ArrowDownIcon, ArrowUpIcon, Columns3Icon, MonitorDownIcon, PlusIcon, SearchIcon, XIcon } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -26,6 +26,7 @@ import { bestRole, type BestRole } from '@/domain/rating'
 import type { Player, PlayerStatus } from '@/domain/types'
 import { useI18n } from '@/i18n'
 import { useStore } from '@/store'
+import { FmImportDialog } from './FmImportDialog'
 import { PlayerForm } from './PlayerForm'
 import { PlayerSheet } from './PlayerSheet'
 
@@ -75,6 +76,7 @@ export function SquadPage() {
   const [sorting, setSorting] = useState<SortingState>([{ id: 'name', desc: false }])
   const [visibility, setVisibility] = useState<VisibilityState>(loadVisibility)
   const [creating, setCreating] = useState(false)
+  const [importing, setImporting] = useState(false)
   const [openId, setOpenId] = useState<number | null>(null)
   /** Tous les joueurs du club, ceux présents au club ou ceux prêtés (hors effectif). */
   const [view, setView] = useState<SquadView>(loadView)
@@ -198,7 +200,12 @@ export function SquadPage() {
   return (
     <div className="flex h-full flex-col">
       <PageHeader title={t.squad.title} count={t.squad.count(squadCount)}
-        actions={<Button onClick={() => setCreating(true)}><PlusIcon />{t.squad.addPlayer}</Button>}>
+        actions={(
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setImporting(true)}><MonitorDownIcon />{t.fmImport.button}</Button>
+            <Button onClick={() => setCreating(true)}><PlusIcon />{t.squad.addPlayer}</Button>
+          </div>
+        )}>
         <ToggleGroup type="single" variant="outline" size="sm" value={view}
           onValueChange={(v) => v && changeView(v as SquadView)}>
           <ToggleGroupItem value="all">{t.squad.viewAll(players.length)}</ToggleGroupItem>
@@ -324,7 +331,9 @@ export function SquadPage() {
       </div>
 
       {creating && <PlayerForm onClose={() => setCreating(false)} />}
+      {importing && <FmImportDialog onClose={() => setImporting(false)} />}
       {openId !== null && <PlayerSheet playerId={openId} onClose={() => setOpenId(null)} />}
     </div>
   )
 }
+

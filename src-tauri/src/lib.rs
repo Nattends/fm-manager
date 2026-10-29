@@ -1,3 +1,5 @@
+mod fm_screen;
+
 use tauri_plugin_sql::{Migration, MigrationKind};
 
 fn migrations() -> Vec<Migration> {
@@ -77,10 +79,62 @@ async fn transfermarkt_get(url: String) -> Result<tauri::ipc::Response, String> 
   Ok(tauri::ipc::Response::new(bytes.to_vec()))
 }
 
+/// Raccourci global qui capture la fenêtre de FM27 (actif seulement pendant l'import).
+const CAPTURE_SHORTCUT: &str = "ctrl+shift+f";
+
+/// OCR d'une image PNG (donnée en base64) : mots et rectangles en pixels.
+#[tauri::command]
+async fn fm_ocr(png_base64: String) -> Result<Vec<fm_screen::OcrWord>, String> {
+  use base64::Engine;
+  let png = base64::engine::general_purpose::STANDARD.decode(png_base64).map_err(|e| e.to_string())?;
+  tauri::async_runtime::spawn_blocking(move || fm_screen::ocr_png(&png)).await.map_err(|e| e.to_string())?
+}
+
+/// Capture la fenêtre de FM27 tout de suite (sans raccourci) et lit les textes.
+#[tauri::command]
+async fn fm_capture_now() -> Result<fm_screen::Capture, String> {
+  tauri::async_runtime::spawn_blocking(fm_screen::capture_fm).await.map_err(|e| e.to_string())?
+}
+
+/// Active ou désactive le raccourci global de capture.
+#[tauri::command]
+fn fm_hotkey(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+  use tauri_plugin_global_shortcut::GlobalShortcutExt;
+  let shortcuts = app.global_shortcut();
+  if enabled {
+    if !shortcuts.is_registered(CAPTURE_SHORTCUT) {
+      shortcuts.register(CAPTURE_SHORTCUT).map_err(|e| e.to_string())?;
+    }
+  } else if shortcuts.is_registered(CAPTURE_SHORTCUT) {
+    shortcuts.unregister(CAPTURE_SHORTCUT).map_err(|e| e.to_string())?;
+  }
+  Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+  use tauri::Emitter;
   tauri::Builder::default()
-    .invoke_handler(tauri::generate_handler![transfermarkt_get])
+    .invoke_handler(tauri::generate_handler![transfermarkt_get, fm_ocr, fm_capture_now, fm_hotkey])
+    .plugin(
+      tauri_plugin_global_shortcut::Builder::new()
+        .with_handler(|app, _shortcut, event| {
+          if event.state() != tauri_plugin_global_shortcut::ShortcutState::Pressed {
+            return;
+          }
+          let app = app.clone();
+          // La capture et l'OCR prennent un moment : hors du fil de l'interface.
+          std::thread::spawn(move || match fm_screen::capture_fm() {
+            Ok(capture) => {
+              let _ = app.emit("fm-capture", capture);
+            }
+            Err(e) => {
+              let _ = app.emit("fm-capture-error", e);
+            }
+          });
+        })
+        .build(),
+    )
     // Mises à jour depuis les releases GitHub (signées), puis redémarrage de l'appli.
     .plugin(tauri_plugin_updater::Builder::new().build())
     .plugin(tauri_plugin_process::init())

@@ -1,8 +1,11 @@
-/** Attributs FM par groupe (les libellés sont dans src/i18n). */
+/**
+ * Attributs FM par groupe (les libellés sont dans src/i18n). L'ordre est celui affiché partout :
+ * pour la technique, les coups de pied arrêtés (corners, coups francs, touches longues, penalties) sont en dernier.
+ */
 export const ATTRIBUTE_GROUPS = {
   technical: [
-    'corners', 'crossing', 'dribbling', 'finishing', 'firstTouch', 'freeKick', 'heading',
-    'longShots', 'longThrows', 'marking', 'passing', 'penaltyTaking', 'tackling', 'technique',
+    'crossing', 'dribbling', 'finishing', 'firstTouch', 'heading', 'longShots', 'marking', 'passing',
+    'tackling', 'technique', 'corners', 'freeKick', 'longThrows', 'penaltyTaking',
   ],
   mental: [
     'aggression', 'anticipation', 'bravery', 'composure', 'concentration', 'decisions', 'determination',

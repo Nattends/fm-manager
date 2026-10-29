@@ -4,15 +4,18 @@ import { DicesIcon, DownloadIcon, Loader2Icon, RefreshCwIcon, UploadIcon, UsersI
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { askConfirm } from '@/lib/confirm'
+import { changeAttrThreshold, resetAttrThresholds, useAttrThresholds } from '@/lib/attrThresholds'
 import { LOGO_STYLES, setLogoStyle, useLogoStyle } from '@/lib/logoStyle'
 import { appVersion, checkForUpdate } from '@/lib/updates'
 import { cn } from '@/lib/utils'
 import { loadSizeLock, setSizeLock } from '@/lib/windowMode'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ClubLogo } from '@/components/ClubLogo'
+import { ATTR_TIER_COLORS, attrColor } from '@/components/styles'
 import { offerUpdate } from '@/components/updateToast'
 import { PageHeader, Panel } from '@/components/layout'
 import type { Backup } from '@/data/dataSource'
@@ -26,6 +29,7 @@ import { useStore } from '@/store'
 export function SettingsPage() {
   const { players, tactics, clubs, activeClub, createClub, setActiveClub, exportAll, importAll, savePlayer, deletePlayer } = useStore()
   const logoStyle = useLogoStyle()
+  const attrThresholds = useAttrThresholds()
   const { t, lang, setLang } = useI18n()
   const [demoBusy, setDemoBusy] = useState(false)
   const [sizeLocked, setSizeLocked] = useState(loadSizeLock)
@@ -166,6 +170,37 @@ export function SettingsPage() {
             </div>
           </Panel>
 
+          <Panel title={t.settings.attrColors} className="col-span-2">
+            <p className="mb-3 text-[13px] leading-relaxed text-muted-foreground">{t.settings.attrColorsText}</p>
+            <div className="grid grid-cols-4 gap-3">
+              {(['excellent', 'good', 'average'] as const).map((k) => (
+                <div key={k} className="space-y-1.5">
+                  <Label htmlFor={`attr-${k}`} className={cn('text-sm', ATTR_TIER_COLORS[k])}>{t.settings.attrTiers[k]}</Label>
+                  <Input id={`attr-${k}`} type="number" min={1} max={20} className="h-9 w-24"
+                    value={attrThresholds[k]}
+                    onChange={(e) => {
+                      const n = Number(e.target.value)
+                      if (e.target.value !== '' && Number.isFinite(n)) changeAttrThreshold(k, n)
+                    }}
+                    onFocus={(e) => e.target.select()} />
+                </div>
+              ))}
+              <div className="space-y-1.5">
+                <span className={cn('text-sm', ATTR_TIER_COLORS.poor)}>{t.settings.attrTiers.poor}</span>
+                <p className="flex h-9 items-center text-sm tabular-nums text-slate-300">{attrThresholds.average}</p>
+              </div>
+            </div>
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <span className="text-[13px] text-muted-foreground">{t.settings.attrPreview}</span>
+              <div className="flex flex-wrap gap-1.5">
+                {Array.from({ length: 20 }, (_, i) => i + 1).map((v) => (
+                  <span key={v} className={cn('w-7 rounded bg-secondary/40 py-0.5 text-center text-sm font-semibold tabular-nums', attrColor(v))}>{v}</span>
+                ))}
+              </div>
+              <Button variant="outline" size="sm" className="ml-auto" onClick={resetAttrThresholds}>{t.settings.attrReset}</Button>
+            </div>
+          </Panel>
+
           <Panel title={t.updates.title}>
             <p className="mb-3 text-[13px] leading-relaxed text-muted-foreground">{t.updates.text(version)}</p>
             <Button variant="outline" onClick={checkUpdates} disabled={checking}>
@@ -204,3 +239,4 @@ export function SettingsPage() {
     </div>
   )
 }
+

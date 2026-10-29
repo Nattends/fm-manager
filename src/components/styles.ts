@@ -1,4 +1,6 @@
+import { attrTier, type AttrTier } from '@/domain/attrThresholds'
 import { lineOf } from '@/domain/lineup'
+import { getAttrThresholds } from '@/lib/attrThresholds'
 import type { Position } from '@/domain/positions'
 import type { PlayerStatus } from '@/domain/types'
 
@@ -60,12 +62,17 @@ export function scoreBorder(score: number): string {
   return 'border-l-rose-500'
 }
 
+/** Classe de couleur d'un niveau d'attribut (les seuils se règlent dans Settings). */
+export const ATTR_TIER_COLORS: Record<AttrTier, string> = {
+  excellent: 'text-emerald-400',
+  good: 'text-lime-400',
+  average: 'text-amber-300',
+  poor: 'text-rose-400',
+}
+
 export function attrColor(v: number | undefined): string {
   if (v === undefined) return 'text-slate-600'
-  if (v >= 16) return 'text-emerald-400'
-  if (v >= 13) return 'text-lime-400'
-  if (v >= 10) return 'text-amber-300'
-  return 'text-rose-400'
+  return ATTR_TIER_COLORS[attrTier(v, getAttrThresholds())]
 }
 
 /** Couleur d'un niveau de familiarité au poste (1-20, absent = jamais joué). */
