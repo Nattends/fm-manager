@@ -79,6 +79,11 @@ export const en = {
     noData: 'No attribute of this role has been entered',
     estimated: (pct: number, avg: number) => `Partial rating: ${pct}% of this role's weighted attributes entered (average ${avg}/20)`,
     detail: (avg: number, factor: string) => `Weighted average ${avg}/20 · position familiarity ×${factor}`,
+    avg: 'Avg rating',
+    avgShort: 'Avg',
+    avgTitle: (n: number) => `Average match rating this season (${n} rated ${n > 1 ? 'matches' : 'match'}), read from the save`,
+    avgNone: 'No rated match this season',
+    matches: (n: number) => `${n} ${n > 1 ? 'matches' : 'match'}`,
   },
   clubs: {
     title: 'My clubs',
@@ -124,7 +129,7 @@ export const en = {
     hideAll: 'Hide all',
     col: {
       name: 'Name', age: 'Age', nationality: 'Nat.', club: 'Club', positions: 'Positions', status: 'Status',
-      ca: 'Current', pa: 'Potential', bestRole: 'Best role', contract: 'Contract', value: 'Value', wage: 'Wage',
+      ca: 'Current', pa: 'Potential', bestRole: 'Best role', avgRating: 'Avg rating', contract: 'Contract', value: 'Value', wage: 'Wage',
     },
   },
   player: {
@@ -387,7 +392,7 @@ export const en = {
     minAge: 'Age min',
     maxAge: 'Age max',
     sortBy: 'Sort',
-    sort: { rating: 'Rating', value: 'Value', wage: 'Wage', age: 'Age', name: 'Name' },
+    sort: { rating: 'Rating', avgRating: 'Avg rating', value: 'Value', wage: 'Wage', age: 'Age', name: 'Name' },
     value: 'Value',
     valueTitle: 'Transfer value from the save. The game shows a range around it, wider when the player is less known.',
     wageRange: 'Wage',
@@ -396,7 +401,7 @@ export const en = {
     valueRangeTitle: 'Transfer value, in millions of euros (e.g. 5 – 25)',
     min: 'min',
     max: 'max',
-    noValues: 'Refresh the database (Settings) to read transfer values.',
+    noValues: 'Refresh the database (Settings) to read transfer values and average ratings.',
     perWeek: (amount: string) => `€${amount} p/w`,
     rating: 'Rating',
     loanFrom: (club: string) => `on loan from ${club}`,

@@ -22,6 +22,8 @@ function fort(overrides: Partial<SavePlayer> = {}): SavePlayer {
     contractEnd: { day: 181, year: 2031 },
     wage: 42951,
     value: 25_625_382,
+    avgRating: 6.866666,
+    ratedMatches: 9,
     onLoan: false,
     hostClub: '',
     ...overrides,
@@ -115,6 +117,10 @@ describe('plan d’import depuis la sauvegarde', () => {
       id: 12, name: 'Hector Fort', wage: 50000, value: 29_831_000, caStars: 3, status: 'key', notes: 'note', photo: 'data:x',
       contractEnd: '2031-06-30',
     })
+    // note moyenne de la saison : arrondie au centième ; sans match noté, elle est effacée
+    expect(a.player).toMatchObject({ avgRating: 6.87, ratedMatches: 9 })
+    expect(planSaveImport([fort({ avgRating: null, ratedMatches: 0 })], [existing], club, today).actions[0].player)
+      .toMatchObject({ avgRating: null, ratedMatches: null })
     // valeur inconnue dans la sauvegarde : celle déjà enregistrée est gardée
     expect(planSaveImport([fort({ value: null })], [existing], club, today).actions[0].player.value).toBe(1e8)
     expect(a.player.attributes.concentration).toBe(9)

@@ -15,7 +15,7 @@ import { LoanBadge, PositionChip } from '@/components/chips'
 import { Flag, NationalityPicker } from '@/components/Nationality'
 import { PositionPitch } from '@/components/PositionPitch'
 import { RoleSelect } from '@/components/RoleSelect'
-import { RatingBadge } from '@/components/ui'
+import { AvgRating, RatingBadge } from '@/components/ui'
 import { attrColor } from '@/components/styles'
 import { loadScouting, refreshScouting } from '@/data/fmSave'
 import { ATTRIBUTE_GROUP_IDS, attributesOf, FIRST_SET_PIECE } from '@/domain/attributes'
@@ -100,6 +100,8 @@ function ScoutDetail({ db, player, today, roles, onCompare }: {
         </p>
         <p className="text-sm text-muted-foreground">
           {t.scouting.value} <span className="font-medium text-slate-200" title={t.scouting.valueTitle}>{valueText(player.value)}</span>
+          {' · '}{t.rating.avg} <AvgRating value={player.avgRating} matches={player.ratedMatches} />
+          {player.ratedMatches > 0 && <span className="text-xs"> ({t.rating.matches(player.ratedMatches)})</span>}
           {player.wage !== null && <> · {t.player.wage} <span className="font-medium text-slate-200">{t.scouting.perWeek(player.wage.toLocaleString(lang))}</span></>}
         </p>
         {owner && <LoanBadge club={owner} />}
@@ -191,7 +193,8 @@ export function ScoutingPage() {
 
   const today = useMemo(() => (db ? scoutToday(db) : null), [db])
   // base lue avant la v0.15 : pas de valeurs tant qu'elle n'est pas actualisée
-  const hasValues = useMemo(() => !!db?.players.some((p) => p.value !== null), [db])
+  // base lue avant la v0.16 : pas de notes moyennes tant qu'elle n'est pas actualisée
+  const hasValues = useMemo(() => !!db?.players.some((p) => p.value !== null) && !!db?.players.some((p) => p.avgRating !== null), [db])
   // meilleure note : rôles avec ballon (les rôles sans ballon n'ont que 2-3 attributs clés) et rôles perso
   const bestRoles = useMemo(() => roles.filter((r) => r.phase !== 'oop'), [roles])
   const positionRoles = useMemo(
@@ -279,7 +282,7 @@ export function ScoutingPage() {
         <Select value={sort} onValueChange={(v) => setSort(v as ScoutSort)}>
           <SelectTrigger size="sm" className="h-8 w-32"><SelectValue /></SelectTrigger>
           <SelectContent>
-            {(['rating', 'value', 'wage', 'age', 'name'] as const).map((s) => <SelectItem key={s} value={s}>{t.scouting.sortBy} : {t.scouting.sort[s]}</SelectItem>)}
+            {(['rating', 'avgRating', 'value', 'wage', 'age', 'name'] as const).map((s) => <SelectItem key={s} value={s}>{t.scouting.sortBy} : {t.scouting.sort[s]}</SelectItem>)}
           </SelectContent>
         </Select>
       </PageHeader>
@@ -298,6 +301,7 @@ export function ScoutingPage() {
                 <th className="px-2 py-2">{t.player.contractEnd}</th>
                 <th className="px-2 py-2 text-right">{t.player.wage}</th>
                 <th className="px-2 py-2 text-right" title={t.scouting.valueTitle}>{t.scouting.value}</th>
+                <th className="px-2 py-2 text-right" title={t.rating.avg}>{t.rating.avgShort}</th>
                 <th className="px-3 py-2 text-right">{role ? t.scouting.rating : t.scouting.bestRating}</th>
               </tr>
             </thead>
@@ -324,6 +328,7 @@ export function ScoutingPage() {
                     <td className="px-2 py-1.5 tabular-nums text-slate-300">{p.contractEnd ? isoDate(p.contractEnd) : '–'}</td>
                     <td className="px-2 py-1.5 text-right tabular-nums text-slate-300">{p.wage !== null ? t.scouting.perWeek(p.wage.toLocaleString(lang)) : '–'}</td>
                     <td className="px-2 py-1.5 text-right tabular-nums text-slate-300">{valueText(p.value)}</td>
+                    <td className="px-2 py-1.5 text-right"><AvgRating value={p.avgRating} matches={p.ratedMatches} className="text-xs" /></td>
                     <td className="px-3 py-1.5">
                       {rating && ratedRole && (
                         <span className="flex items-center justify-end gap-2">

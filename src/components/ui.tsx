@@ -2,7 +2,7 @@ import { cn } from '@/lib/utils'
 import type { RoleRating } from '@/domain/rating'
 import type { Player } from '@/domain/types'
 import { useI18n } from '@/i18n'
-import { scoreColor, scoreSolid } from './styles'
+import { matchRatingColor, scoreColor, scoreSolid } from './styles'
 
 export function Stars({ value, className }: { value: number; className?: string }) {
   const full = Math.floor(value)
@@ -42,6 +42,20 @@ export function RatingBadge({ rating, size = 'md', solid, className }: {
     <span title={title} className={cn(base, solid ? scoreSolid(rating.score) : scoreColor(rating.score), solid && 'font-bold shadow-md')}>
       {rating.score.toFixed(0)}
       {rating.estimated && <span className="ml-0.5 opacity-70">~</span>}
+    </span>
+  )
+}
+
+/** Note moyenne en match de la saison (lue dans la sauvegarde FM), « – » sans match noté. */
+export function AvgRating({ value, matches, className }: { value: number | null | undefined; matches?: number | null; className?: string }) {
+  const { t, lang } = useI18n()
+  if (value === null || value === undefined) {
+    return <span className={cn('text-slate-600 tabular-nums', className)} title={t.rating.avgNone}>–</span>
+  }
+  return (
+    <span title={t.rating.avgTitle(matches ?? 0)}
+      className={cn('inline-flex shrink-0 items-center justify-center rounded px-1 font-semibold tabular-nums ring-1', matchRatingColor(value), className)}>
+      {value.toLocaleString(lang, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
     </span>
   )
 }

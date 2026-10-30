@@ -17,7 +17,7 @@ import { EmptyState, PageHeader } from '@/components/layout'
 import { PositionChip, StatusBadge } from '@/components/chips'
 import { PlayerClub } from '@/components/ClubLogo'
 import { Nationality } from '@/components/Nationality'
-import { PlayerAvatar, RatingBadge, Stars } from '@/components/ui'
+import { AvgRating, PlayerAvatar, RatingBadge, Stars } from '@/components/ui'
 import { attrColor } from '@/components/styles'
 import { ATTRIBUTE_GROUP_IDS, attributesOf, type AttributeGroup, type AttributeKey } from '@/domain/attributes'
 import { nationalityLabel } from '@/domain/nationalities'
@@ -51,9 +51,9 @@ function loadView(): SquadView {
 }
 const ALL = 'all'
 const STATUSES: PlayerStatus[] = ['key', 'rotation', 'prospect', 'for_sale', 'unavailable']
-const BASE_COLUMNS = ['age', 'nationality', 'club', 'positions', 'status', 'ca', 'pa', 'bestRole', 'contract', 'value', 'wage'] as const
+const BASE_COLUMNS = ['age', 'nationality', 'club', 'positions', 'status', 'ca', 'pa', 'bestRole', 'avgRating', 'contract', 'value', 'wage'] as const
 /** Colonnes alignées à droite (nombres). */
-const NUMERIC = new Set<string>(['age', 'value', 'wage', ...ATTRIBUTE_GROUP_IDS.flatMap((g) => attributesOf(g))])
+const NUMERIC = new Set<string>(['age', 'avgRating', 'value', 'wage', ...ATTRIBUTE_GROUP_IDS.flatMap((g) => attributesOf(g))])
 
 const col = createColumnHelper<Row>()
 
@@ -166,6 +166,10 @@ export function SquadPage() {
           </span>
         ) : <span className="text-muted-foreground">{t.common.none}</span>
       },
+    }),
+    col.accessor((r) => r.player.avgRating ?? -1, {
+      id: 'avgRating', header: t.squad.col.avgRating, sortDescFirst: true,
+      cell: (c) => <AvgRating value={c.row.original.player.avgRating} matches={c.row.original.player.ratedMatches} />,
     }),
     col.accessor((r) => r.player.contractEnd ?? '', { id: 'contract', header: t.squad.col.contract, cell: (c) => date(c.getValue() || null) }),
     col.accessor((r) => r.player.value ?? -1, { id: 'value', header: t.squad.col.value, cell: (c) => money(c.row.original.player.value) }),

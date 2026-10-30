@@ -57,6 +57,12 @@ fn migrations() -> Vec<Migration> {
       sql: include_str!("../migrations/007_tactic_grid.sql"),
       kind: MigrationKind::Up,
     },
+    Migration {
+      version: 8,
+      description: "note moyenne des joueurs",
+      sql: include_str!("../migrations/008_player_avg_rating.sql"),
+      kind: MigrationKind::Up,
+    },
   ];
   list.into_iter().map(|m| Migration { sql: lf(m.sql), ..m }).collect()
 }

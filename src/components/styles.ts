@@ -15,6 +15,15 @@ export function scoreColor(score: number): string {
   return 'bg-rose-500/15 text-rose-300 ring-rose-500/40'
 }
 
+/** Couleur d'une note moyenne en match (échelle FM, 1-10) : excellente (7,5+), bonne (7+), correcte (6,7+), moyenne (6,4+), faible. */
+export function matchRatingColor(v: number): string {
+  if (v >= 7.5) return 'bg-cyan-400/15 text-cyan-200 ring-cyan-400/40'
+  if (v >= 7) return 'bg-emerald-500/15 text-emerald-300 ring-emerald-500/40'
+  if (v >= 6.7) return 'bg-lime-500/15 text-lime-300 ring-lime-500/40'
+  if (v >= 6.4) return 'bg-amber-500/15 text-amber-300 ring-amber-500/40'
+  return 'bg-rose-500/15 text-rose-300 ring-rose-500/40'
+}
+
 /** Seule la couleur du texte d'une note (pour les chiffres sans fond). */
 export function scoreText(score: number): string {
   return scoreColor(score).split(' ').find((c) => c.startsWith('text-')) ?? ''

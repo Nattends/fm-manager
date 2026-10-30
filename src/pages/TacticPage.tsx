@@ -24,7 +24,7 @@ import { FamiliarityTag, PositionChip } from '@/components/chips'
 import { PageHeader, StatTile } from '@/components/layout'
 import { Nationality } from '@/components/Nationality'
 import { RolePicker } from '@/components/RolePicker'
-import { RatingBadge } from '@/components/ui'
+import { AvgRating, RatingBadge } from '@/components/ui'
 import { LINE_COLORS, attrColor, lineColorOf, scoreColor, scoreText } from '@/components/styles'
 import { CUSTOM_FORMATION_ID, FORMATIONS, getFormation, type Formation } from '@/domain/formations'
 import {
@@ -632,6 +632,7 @@ function SquadList({ players, roles, excludedIds, starterIds, dropActive, onOpen
                   <Undo2Icon />
                 </Button>
               )}
+              <AvgRating value={player.avgRating} matches={player.ratedMatches} className="text-[11px]" />
               {best && <RatingBadge rating={best.rating} size="sm" />}
             </div>
           )
@@ -855,6 +856,10 @@ function SlotCard({ phase, slot, roles, starterIds, big, acceptsPlayers, onRole,
               </div>
             </div>
             <div className={cn('mt-[0.3em] truncate text-slate-400', s.meta)} title={t.tactic.familiarityAt(t.positions[position])}>
+              {/* note moyenne en match de la saison, en tête : visible même quand la ligne est tronquée */}
+              {starter.player.avgRating != null && (
+                <><AvgRating value={starter.player.avgRating} matches={starter.player.ratedMatches} className="px-[0.25em] text-[0.95em]" />{' · '}</>
+              )}
               {t.player.ageValue(starter.player.age)}
               {starter.player.nationality.trim() && <> · <Nationality value={starter.player.nationality} flagOnly /></>}
               {' · '}<FamiliarityTag value={fam} />

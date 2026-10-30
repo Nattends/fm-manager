@@ -14,7 +14,7 @@ import { ClubLogo, PlayerClub } from '@/components/ClubLogo'
 import { Flag, Nationality } from '@/components/Nationality'
 import { SectionTitle } from '@/components/layout'
 import { RoleSelect } from '@/components/RoleSelect'
-import { PlayerAvatar, RatingBadge } from '@/components/ui'
+import { AvgRating, PlayerAvatar, RatingBadge } from '@/components/ui'
 import { attrColor } from '@/components/styles'
 import { loadScouting } from '@/data/fmSave'
 import { attributesOf, FIRST_SET_PIECE, type AttributeGroup } from '@/domain/attributes'
@@ -192,8 +192,10 @@ function SideCard({ player, side, roles, source, onPick }: {
             </span>
           )
           : <PlayerClub player={player} className="text-sm text-slate-200" />}
-        <div className={cn('flex flex-wrap gap-1', right && 'justify-end')}>
+        <div className={cn('flex flex-wrap items-center gap-1', right && 'justify-end')}>
           {positions.map((p) => <PositionChip key={p} position={p} familiarity={player.positions[p]} />)}
+          <span className="ml-1 text-[11px] text-muted-foreground">{t.rating.avgShort}</span>
+          <AvgRating value={player.avgRating} matches={player.ratedMatches} className="text-xs" />
         </div>
       </div>
       {best && (

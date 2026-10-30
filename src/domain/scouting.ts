@@ -1,6 +1,7 @@
 import type { AttributeKey } from './attributes'
 import {
-  ageAt, displayValue, FM_NATIONS, footFrom, SAVE_POSITIONS, SAVE_VALUES, saveFields, todayGameDate, valueEuros, wageEuros, type GameDate,
+  ageAt, displayValue, FM_NATIONS, footFrom, roundRating, SAVE_POSITIONS, SAVE_VALUES, saveFields, todayGameDate, valueEuros, wageEuros,
+  type GameDate,
 } from './fmSave'
 import { normalizeText } from './photoMatch'
 import type { Position } from './positions'
@@ -35,6 +36,10 @@ export interface ScoutPlayer {
   wage: number | null
   /** Valeur de transfert en euros, null si inconnue (ou base lue avant la v0.15). */
   value: number | null
+  /** Note moyenne en match de la saison, null sans match noté (ou base lue avant la v0.16). */
+  avgRating: number | null
+  /** Matchs notés de la saison. */
+  ratedMatches: number
 }
 
 export interface ScoutDb {
@@ -45,15 +50,19 @@ export interface ScoutDb {
   players: ScoutPlayer[]
 }
 
-/** FMS3 ajoute la valeur de transfert après le salaire ; FMS2 (bases plus anciennes) n'en a pas. */
-const MAGICS = ['FMS2', 'FMS3']
+/**
+ * FMS3 ajoute la valeur de transfert après le salaire, FMS4 la note moyenne de la saison (somme des notes×10 u16, matchs u8)
+ * après la valeur ; FMS2 (bases plus anciennes) n'a ni l'une ni l'autre.
+ */
+const MAGICS = ['FMS2', 'FMS3', 'FMS4']
 const NONE = 0xffffffff
 
 /** Décode la base enregistrée ; null si elle est vide ou d'un autre format. */
 export function decodeScouting(bytes: Uint8Array): ScoutDb | null {
   const magic = bytes.length >= 8 ? String.fromCharCode(...bytes.subarray(0, 4)) : ''
   if (!MAGICS.includes(magic)) return null
-  const withValue = magic === 'FMS3'
+  const withValue = magic !== 'FMS2'
+  const withRating = magic === 'FMS4'
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   const utf8 = new TextDecoder()
   let p = 4
@@ -83,11 +92,15 @@ export function decodeScouting(bytes: Uint8Array): ScoutDb | null {
     const contractEnd = date()
     const wage = wageEuros(u32())
     const rawValue = withValue ? u32() : NONE
+    const ratingSum = withRating ? u16() : 0
+    const ratedMatches = withRating ? bytes[p++] : 0
     const name = text(bytes[p++])
     players.push({
       index: i, name, birth, nationality, positions, values,
       club: club === NONE ? -1 : club, owner: owner === NONE ? -1 : owner, contractEnd, wage,
       value: valueEuros(rawValue === NONE ? null : rawValue),
+      avgRating: ratedMatches ? roundRating(ratingSum / ratedMatches / 10) : null,
+      ratedMatches,
     })
   }
   return { refreshedAt, savePath, gameDate, clubs, players }
@@ -121,7 +134,7 @@ export function rateScout(p: ScoutPlayer, role: RoleDefinition, position?: Posit
 export function scoutAsPlayer(p: ScoutPlayer, db: ScoutDb, today: GameDate): Player {
   const f = saveFields({
     name: p.name, firstName: '', lastName: '', birth: p.birth, nation: -1, positions: p.positions, values: p.values,
-    contractEnd: p.contractEnd, wage: 0, value: null, onLoan: false, hostClub: '',
+    contractEnd: p.contractEnd, wage: 0, value: null, avgRating: p.avgRating, ratedMatches: p.ratedMatches, onLoan: false, hostClub: '',
   }, today)
   return {
     ...f,
@@ -150,7 +163,7 @@ export function scoutToday(db: ScoutDb): GameDate {
   return db.gameDate ?? todayGameDate()
 }
 
-export type ScoutSort = 'rating' | 'age' | 'name' | 'wage' | 'value'
+export type ScoutSort = 'rating' | 'avgRating' | 'age' | 'name' | 'wage' | 'value'
 
 export interface ScoutFilters {
   search: string
@@ -320,6 +333,9 @@ export function searchScouts(db: ScoutDb, f: ScoutFilters, today: GameDate, free
   else if (f.sort === 'age') found.sort((a, b) => a.age - b.age || byName(a, b))
   else if (f.sort === 'wage') found.sort((a, b) => (b.player.wage ?? -1) - (a.player.wage ?? -1) || byName(a, b))
   else if (f.sort === 'value') found.sort((a, b) => (b.player.value ?? -1) - (a.player.value ?? -1) || byName(a, b))
+  else if (f.sort === 'avgRating') {
+    found.sort((a, b) => (b.player.avgRating ?? -1) - (a.player.avgRating ?? -1) || b.player.ratedMatches - a.player.ratedMatches || byName(a, b))
+  }
   else found.sort(byName)
   // note détaillée (badge) seulement pour les lignes affichées
   const rows = found.slice(0, f.limit).map(({ player, age, role }): ScoutRow => ({

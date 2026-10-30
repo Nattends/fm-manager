@@ -27,6 +27,8 @@ interface PlayerRow {
   contract_end: string | null
   wage: number | null
   value: number | null
+  avg_rating: number | null
+  rated_matches: number | null
   status: Player['status']
   notes: string
   photo: string | null
@@ -78,6 +80,8 @@ function rowToPlayer(row: PlayerRow, attributes: Attributes): Player {
     contractEnd: row.contract_end,
     wage: row.wage,
     value: row.value,
+    avgRating: row.avg_rating,
+    ratedMatches: row.rated_matches,
     status: row.status,
     notes: row.notes,
     attributes,
@@ -146,6 +150,8 @@ export class ManualSource implements DataSource {
       p.contractEnd, p.wage, p.value, p.status, p.notes,
       // Absents des sauvegardes antérieures à la version 0.2.
       p.club ?? '', p.onLoan ? 1 : 0,
+      // Absents avant la version 0.16 (note moyenne lue dans la sauvegarde FM).
+      p.avgRating ?? null, p.ratedMatches ?? null,
     ]
     let id = p.id
     let clubId = p.clubId
@@ -153,8 +159,8 @@ export class ManualSource implements DataSource {
       if (clubId === undefined) throw new Error('clubId manquant pour un nouveau joueur')
       const res = await d.execute(
         `INSERT INTO players (name, age, nationality, foot, positions, ca_stars, pa_stars,
-           contract_end, wage, value, status, notes, club, on_loan, club_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+           contract_end, wage, value, status, notes, club, on_loan, avg_rating, rated_matches, club_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
         [...params, clubId],
       )
       id = res.lastInsertId as number
@@ -162,8 +168,8 @@ export class ManualSource implements DataSource {
       await d.execute(
         `UPDATE players SET name = $1, age = $2, nationality = $3, foot = $4, positions = $5,
            ca_stars = $6, pa_stars = $7, contract_end = $8, wage = $9, value = $10, status = $11,
-           notes = $12, club = $13, on_loan = $14, updated_at = datetime('now')
-         WHERE id = $15`,
+           notes = $12, club = $13, on_loan = $14, avg_rating = $15, rated_matches = $16, updated_at = datetime('now')
+         WHERE id = $17`,
         [...params, id],
       )
     }

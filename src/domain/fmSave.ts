@@ -45,6 +45,10 @@ export interface SavePlayer {
   wage: number
   /** Valeur de transfert en livres sterling, null si inconnue. */
   value: number | null
+  /** Note moyenne en match de la saison, null sans match noté. */
+  avgRating: number | null
+  /** Matchs notés de la saison. */
+  ratedMatches: number
   onLoan: boolean
   hostClub: string
 }
@@ -156,8 +160,15 @@ export interface SaveFields {
   contractEnd: string | null
   wage: number | null
   value: number | null
+  avgRating: number | null
+  ratedMatches: number | null
   onLoan: boolean
   club: string
+}
+
+/** Note moyenne arrondie au centième (comme dans le jeu), null sans match noté. */
+export function roundRating(v: number | null | undefined): number | null {
+  return v === null || v === undefined || !Number.isFinite(v) ? null : Math.round(v * 100) / 100
 }
 
 /** Champs de l'application tirés d'un joueur de la sauvegarde. */
@@ -186,6 +197,8 @@ export function saveFields(p: SavePlayer, today: GameDate): SaveFields {
     contractEnd: p.contractEnd ? isoDate(p.contractEnd) : null,
     wage: wageEuros(p.wage),
     value: valueEuros(p.value),
+    avgRating: roundRating(p.avgRating),
+    ratedMatches: p.avgRating === null ? null : p.ratedMatches,
     onLoan: p.onLoan,
     club: p.onLoan ? p.hostClub : '',
   }
@@ -198,7 +211,8 @@ export type SaveImportAction =
 export type SaveImportPlan = Pick<ImportPlan, 'missing'> & { actions: SaveImportAction[] }
 
 /**
- * Écritures à faire : les joueurs déjà connus sont mis à jour (âge, nationalité, postes, attributs, contrat, salaire, valeur),
+ * Écritures à faire : les joueurs déjà connus sont mis à jour (âge, nationalité, postes, attributs, contrat, salaire, valeur,
+ * note moyenne de la saison),
  * en gardant ce que la sauvegarde ne donne pas (nom, étoiles, statut, notes, photo).
  */
 export function planSaveImport(players: SavePlayer[], existing: Player[], club: Club, today: GameDate): SaveImportPlan {
@@ -220,6 +234,9 @@ export function planSaveImport(players: SavePlayer[], existing: Player[], club: 
         contractEnd: f.contractEnd ?? found.contractEnd,
         wage: f.wage ?? found.wage,
         value: f.value ?? found.value,
+        // statistiques de la saison : la sauvegarde fait foi (null = pas encore de match noté)
+        avgRating: f.avgRating,
+        ratedMatches: f.ratedMatches,
         onLoan: f.onLoan,
         club: f.onLoan ? f.club : found.club,
       }

@@ -72,6 +72,11 @@ export const fr: Messages = {
     noData: "Aucun attribut de ce rôle n'est renseigné",
     estimated: (pct, avg) => `Note partielle : ${pct} % des attributs pondérés du rôle renseignés (moyenne ${avg}/20)`,
     detail: (avg, factor) => `Moyenne pondérée ${avg}/20 · familiarité au poste ×${factor}`,
+    avg: 'Note moyenne',
+    avgShort: 'Moy.',
+    avgTitle: (n) => `Note moyenne en match cette saison (${n} match${n > 1 ? 's' : ''} noté${n > 1 ? 's' : ''}), lue dans la sauvegarde`,
+    avgNone: 'Aucun match noté cette saison',
+    matches: (n) => `${n} match${n > 1 ? 's' : ''}`,
   },
   clubs: {
     title: 'Mes clubs',
@@ -117,7 +122,7 @@ export const fr: Messages = {
     hideAll: 'Tout masquer',
     col: {
       name: 'Nom', age: 'Âge', nationality: 'Nat.', club: 'Club', positions: 'Postes', status: 'Statut',
-      ca: 'Actuel', pa: 'Potentiel', bestRole: 'Meilleur rôle', contract: 'Contrat', value: 'Valeur', wage: 'Salaire',
+      ca: 'Actuel', pa: 'Potentiel', bestRole: 'Meilleur rôle', avgRating: 'Note moy.', contract: 'Contrat', value: 'Valeur', wage: 'Salaire',
     },
   },
   player: {
@@ -380,7 +385,7 @@ export const fr: Messages = {
     minAge: 'Âge min',
     maxAge: 'Âge max',
     sortBy: 'Tri',
-    sort: { rating: 'Note', value: 'Valeur', wage: 'Salaire', age: 'Âge', name: 'Nom' },
+    sort: { rating: 'Note', avgRating: 'Note moyenne', value: 'Valeur', wage: 'Salaire', age: 'Âge', name: 'Nom' },
     value: 'Valeur',
     valueTitle: 'Valeur de transfert lue dans la sauvegarde. Le jeu affiche une fourchette autour d’elle, plus large quand le joueur est peu connu.',
     wageRange: 'Salaire',
@@ -389,7 +394,7 @@ export const fr: Messages = {
     valueRangeTitle: 'Valeur de transfert, en millions d’euros (ex. 5 – 25)',
     min: 'min',
     max: 'max',
-    noValues: 'Actualisez la base (Réglages) pour lire les valeurs de transfert.',
+    noValues: 'Actualisez la base (Réglages) pour lire les valeurs de transfert et les notes moyennes.',
     perWeek: (amount: string) => `${amount} €/sem.`,
     rating: 'Note',
     loanFrom: (club: string) => `prêté par ${club}`,

@@ -30,6 +30,10 @@ export interface Player {
   contractEnd: string | null
   wage: number | null
   value: number | null
+  /** Note moyenne en match de la saison (lue dans la sauvegarde), null / absente si inconnue. */
+  avgRating?: number | null
+  /** Matchs notés de la saison. */
+  ratedMatches?: number | null
   status: PlayerStatus
   notes: string
   attributes: Attributes

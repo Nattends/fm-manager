@@ -16,7 +16,7 @@ import { PlayerClub } from '@/components/ClubLogo'
 import { Nationality } from '@/components/Nationality'
 import { PositionPitch } from '@/components/PositionPitch'
 import { EmptyState, SectionTitle } from '@/components/layout'
-import { PlayerAvatar, RatingBadge, Stars } from '@/components/ui'
+import { AvgRating, PlayerAvatar, RatingBadge, Stars } from '@/components/ui'
 import { attrColor } from '@/components/styles'
 import { attributesOf, FIRST_SET_PIECE, type AttributeGroup } from '@/domain/attributes'
 import { POSITIONS } from '@/domain/positions'
@@ -112,6 +112,13 @@ export function PlayerSheet({ playerId, onClose }: { playerId: number; onClose: 
               <span className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{t.squad.col.pa}</span>
               <Stars value={player.paStars} className="text-base" />
             </div>
+          </div>
+
+          {/* Note moyenne en match de la saison (lue dans la sauvegarde FM) */}
+          <div className="flex shrink-0 flex-col items-center gap-1.5 self-center border-r border-border pr-5">
+            <span className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{t.rating.avg}</span>
+            <AvgRating value={player.avgRating} matches={player.ratedMatches} className="px-2 py-0.5 text-base" />
+            {player.ratedMatches ? <span className="text-[11px] text-muted-foreground">{t.rating.matches(player.ratedMatches)}</span> : null}
           </div>
 
           {best && (
