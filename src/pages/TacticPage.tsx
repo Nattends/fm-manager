@@ -811,7 +811,7 @@ function SlotCard({ phase, slot, roles, starterIds, big, rotated, compact, accep
           {t.positions[position]}
           {halfSpace && <span className="ml-0.5 font-normal opacity-75" title={t.tactic.halfSpace}>{t.tactic.halfSpaceShort}</span>}
         </span>
-        <RolePicker roles={roles} value={slot.shape.roleId} current={slot.role} position={position} player={slot.starter?.player} onChange={onRole}
+        <RolePicker roles={roles} value={slot.shape.roleId} current={slot.role} position={position} phase={phase} player={slot.starter?.player} onChange={onRole}
           className="h-5 flex-1 font-medium text-current hover:bg-black/20" />
         <Select value={slot.shape.duty} onValueChange={(v) => onDuty(v as Duty)}>
           <SelectTrigger size="sm" title={t.tactic.duty}

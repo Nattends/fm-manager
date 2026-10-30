@@ -25,7 +25,7 @@ L'effectif s'importe **directement depuis une sauvegarde FM27** (fichier `.fm`),
 - **Réglages › Rafraîchir les données** : relit la sauvegarde liée au club actif (retenue lors de l'import), met à jour l'effectif (nouvelles recrues créées) et la base de scouting. « Changer de sauvegarde… » pour en lier une autre.
 
 ### Notes par rôle
-- 95 rôles : 10 profils du notebook *position score calculator* et 85 rôles FM (`roles.json`, poids 5 / 3 / 1).
+- 78 rôles : 10 profils du notebook *position score calculator* et les 68 rôles FM26/FM27 (40 avec ballon, 28 sans ballon), avec leurs attributs clés (poids 3) et préférés (poids 1), plus les attributs physiques de la ligne (poids 5). Dans la tactique, le choix du rôle propose d'abord ceux du poste et de la phase affichée.
 - Note sur 100 = moyenne pondérée des attributs (1-20), passée dans une courbe qui écarte bien les bons joueurs (≈ 77) des excellents (≈ 92), puis multipliée par la **familiarité au poste** (Naturel ×1 … jamais joué ×0,5).
 - Note partielle (`~`) si peu d'attributs sont saisis, pas de note (`—`) s'il n'y en a aucun.
 - Écran **Roles** : liste groupée et filtrable, poids réglables au clic (×5 → ×3 → ×1 → ×0), postes du rôle.

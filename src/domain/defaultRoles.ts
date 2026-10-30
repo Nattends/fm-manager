@@ -1,5 +1,5 @@
 import type { AttributeKey } from './attributes'
-import { FM_ROLES } from './fmRoles'
+import { FM_ROLE_PREFIX, FM_ROLES } from './fmRoles'
 import type { Position } from './positions'
 import type { RoleDefinition } from './types'
 
@@ -80,6 +80,15 @@ export const DEFAULT_ROLE_BY_POSITION: Record<Position, string> = {
   ML: 'w', MC: 'box2', MR: 'w',
   AML: 'amrl', AMC: 'amc', AMR: 'amrl',
   ST: 'str',
+}
+
+/**
+ * Vrai si une liste enregistrée ne contient que des rôles FM qui n'existent plus (rôles FM24 remplacés par ceux de FM27) :
+ * c'est une copie des anciens rôles par défaut, sans profil du notebook ni rôle créé par l'utilisateur.
+ */
+export function isObsoleteRoleList(list: RoleDefinition[]): boolean {
+  const current = new Set(FM_ROLES.map((r) => r.id))
+  return list.length > 0 && list.every((r) => r.id.startsWith(FM_ROLE_PREFIX) && !current.has(r.id))
 }
 
 /** Vrai si la liste de rôles est au format actuel (poids par attribut). */

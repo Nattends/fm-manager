@@ -66,6 +66,8 @@ export interface RoleDefinition {
   name: string
   /** Postes sur lesquels ce rôle est disponible. */
   positions: Position[]
+  /** Phase de jeu du rôle FM (avec / sans ballon) ; absente pour les profils valables dans les deux. */
+  phase?: Phase
   /** Poids de chaque attribut dans la note du rôle (absent ou 0 = non compté). */
   weights: Partial<Record<AttributeKey, number>>
 }
