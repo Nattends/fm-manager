@@ -3,8 +3,18 @@ mod fm_screen;
 
 use tauri_plugin_sql::{Migration, MigrationKind};
 
+/// SQL d'une migration en fins de ligne LF. L'empreinte enregistrée dans la base dépend des octets exacts :
+/// une copie de travail en CRLF donnerait une empreinte différente de celle des builds GitHub Actions.
+fn lf(sql: &'static str) -> &'static str {
+  if sql.contains('\r') {
+    Box::leak(sql.replace("\r\n", "\n").into_boxed_str())
+  } else {
+    sql
+  }
+}
+
 fn migrations() -> Vec<Migration> {
-  vec![
+  let list = vec![
     Migration {
       version: 1,
       description: "schema initial",
@@ -47,7 +57,8 @@ fn migrations() -> Vec<Migration> {
       sql: include_str!("../migrations/007_tactic_grid.sql"),
       kind: MigrationKind::Up,
     },
-  ]
+  ];
+  list.into_iter().map(|m| Migration { sql: lf(m.sql), ..m }).collect()
 }
 
 /// Seuls ces hôtes peuvent être interrogés (recherche Transfermarkt et photos).

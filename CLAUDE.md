@@ -47,6 +47,7 @@ The PATH in Claude Code sessions can be stale on this machine. Prefix commands w
 ## Conventions and pitfalls
 
 - **Never use `window.confirm` / `alert`**: the Tauri dialog plugin replaces them with async versions (a Promise is always "true"). Use `askConfirm()` from `src/lib/confirm.ts`.
+- sqlx stores a checksum of each migration's exact bytes: a migration applied from a CRLF working copy fails on a CI build ("migration N was previously applied but has been modified"). `lib.rs` normalises the SQL to LF; keep migration files in LF.
 - Radix `Select` doesn't accept `value=""`: use a sentinel (`'all'`, `'new'`).
 - dnd-kit: drop zones must stay mounted. The "Squad" tab of Tactics uses `forceMount`.
 - Colours: dark theme only (slate surfaces, emerald accent); variables live in `src/index.css`. Use `cn()` (from `@/lib/utils`) for classes.
