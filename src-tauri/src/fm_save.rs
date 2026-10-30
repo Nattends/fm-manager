@@ -268,13 +268,20 @@ fn parse_players(d: &[u8], names: &[Vec<String>]) -> Vec<RawPlayer> {
   found
 }
 
-/// Fiches club : `[id u32][uid u32][uid u32][0][nation u32][FFFFFFFF][nation][nation][u32][2 octets 00 10 FF FF][nom][nom court]`,
+/// Fiches club : `[id u32][uid u32][uid u32][0][nation u32][FFFFFFFF][nation][nation][u32][? ? ? 10 ? ?][nom][nom court]`,
 /// puis plus loin `00 FF 00 n` suivi des n équipes du club.
 fn parse_clubs(d: &[u8]) -> Vec<RawClub> {
   let mut clubs: Vec<(usize, RawClub)> = Vec::new();
   let mut i = 0;
   while i + 64 < d.len() {
-    if d[i + 35..i + 39] != [0, 16, 255, 255] || u32_at(d, i + 4) != u32_at(d, i + 8) || d[i + 12] != 0 || u32_at(d, i + 17) != NONE {
+    // les octets autour du 0x10 sont des drapeaux (variables) : la nation répétée trois fois rend le motif sûr
+    if d[i + 36] != 16
+      || u32_at(d, i + 4) != u32_at(d, i + 8)
+      || d[i + 12] != 0
+      || u32_at(d, i + 17) != NONE
+      || u32_at(d, i + 13) != u32_at(d, i + 21)
+      || u32_at(d, i + 13) != u32_at(d, i + 25)
+    {
       i += 1;
       continue;
     }
@@ -325,7 +332,9 @@ fn parse_header(d: &[u8], clubs: &[RawClub]) -> (String, Option<u32>, Option<Gam
   // un même nom peut revenir dans d'autres fiches : on garde le premier club qui a des équipes
   let mut names: HashMap<&str, u32> = HashMap::new();
   for c in clubs.iter().filter(|c| !c.teams.is_empty()) {
+    // l'en-tête donne parfois le nom complet, parfois le nom court
     names.entry(c.name.as_str()).or_insert(c.id);
+    names.entry(c.short_name.as_str()).or_insert(c.id);
   }
   let limit = d.len().min(200_000);
   let text = |p: usize| -> Option<(String, usize)> {
