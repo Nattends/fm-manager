@@ -2,7 +2,7 @@ import type { AttributeKey } from './attributes'
 import { ageAt, displayValue, FM_NATIONS, footFrom, SAVE_POSITIONS, SAVE_VALUES, saveFields, todayGameDate, type GameDate } from './fmSave'
 import { normalizeText } from './photoMatch'
 import type { Position } from './positions'
-import { rateWith, type RoleRating } from './rating'
+import { familiarityFactor, rateWith, roleWeights, scoreFromAverage, type RoleRating } from './rating'
 import type { Foot, Player, RoleDefinition } from './types'
 
 /**
@@ -142,16 +142,20 @@ export type ScoutSort = 'rating' | 'age' | 'name'
 
 export interface ScoutFilters {
   search: string
-  /** Poste joué (Compétent ou mieux), null = tous. */
-  position: Position | null
-  /** Rôle noté (et classement par cette note), null = aucun. */
+  /** Postes joués (Compétent ou mieux, l'un d'eux suffit), vide = tous. */
+  positions: Position[]
+  /** Rôle noté (et classement par cette note), null = meilleure note parmi `roles`. */
   role: RoleDefinition | null
+  /** Rôles pris en compte pour la meilleure note. */
+  roles: RoleDefinition[]
   minAge: number | null
   maxAge: number | null
   /** Code de nationalité, null = toutes. */
   nationality: string | null
   /** Texte recherché dans le nom du club (« libre » pour les joueurs sans club). */
   club: string
+  /** Masque les joueurs prêtés par leur club. */
+  hideLoaned: boolean
   sort: ScoutSort
   limit: number
 }
@@ -159,7 +163,10 @@ export interface ScoutFilters {
 export interface ScoutRow {
   player: ScoutPlayer
   age: number
+  /** Note du rôle choisi, ou meilleure note du joueur. */
   rating: RoleRating | null
+  /** Rôle de cette note. */
+  ratedRole: RoleDefinition | null
 }
 
 /** Familiarité minimale pour qu'un joueur « joue » à un poste (Compétent). */
@@ -179,6 +186,66 @@ function agesAt(db: ScoutDb, today: GameDate): Int16Array {
   return entry.ages
 }
 
+/** Rôle préparé pour noter des dizaines de milliers de joueurs : index des valeurs brutes et des postes. */
+interface CompiledRole {
+  role: RoleDefinition
+  values: number[]
+  weights: number[]
+  total: number
+  positions: number[]
+}
+
+function compileRole(role: RoleDefinition): CompiledRole {
+  const list = roleWeights(role)
+  return {
+    role,
+    values: list.map(([a]) => VALUE_INDEX[a]),
+    weights: list.map(([, w]) => w),
+    total: list.reduce((s, [, w]) => s + w, 0),
+    positions: role.positions.map((p) => POSITION_INDEX[p]),
+  }
+}
+
+/** Même note que `rateScout` (sans le détail), calculée directement sur les valeurs brutes. */
+function fastScore(p: ScoutPlayer, c: CompiledRole): number {
+  if (!c.total) return 0
+  let sum = 0
+  for (let i = 0; i < c.values.length; i++) sum += displayValue(p.values[c.values[i]]) * c.weights[i]
+  let fam = 0
+  for (const i of c.positions) if (p.positions[i] > fam) fam = p.positions[i]
+  return Math.round(scoreFromAverage(sum / c.total) * familiarityFactor(fam > 1 ? fam : undefined) * 10) / 10
+}
+
+/** Meilleure note parmi des rôles, en ne gardant que ceux dont le joueur connaît au moins un poste. */
+function bestOf(p: ScoutPlayer, roles: CompiledRole[]): { score: number; role: number } {
+  let best = { score: 0, role: -1 }
+  for (let r = 0; r < roles.length; r++) {
+    if (!roles[r].positions.some((i) => p.positions[i] > 1)) continue
+    const score = fastScore(p, roles[r])
+    if (score > best.score) best = { score, role: r }
+  }
+  return best
+}
+
+const bestCache = new WeakMap<ScoutDb, { roles: RoleDefinition[]; scores: Float32Array; best: Int16Array }>()
+
+/** Meilleure note de tous les joueurs sur tous les rôles (calculée une fois par base et par liste de rôles). */
+function bestAll(db: ScoutDb, roles: RoleDefinition[], compiled: CompiledRole[]) {
+  let entry = bestCache.get(db)
+  if (entry?.roles !== roles) {
+    const scores = new Float32Array(db.players.length)
+    const best = new Int16Array(db.players.length)
+    for (const p of db.players) {
+      const b = bestOf(p, compiled)
+      scores[p.index] = b.score
+      best[p.index] = b.role
+    }
+    entry = { roles, scores, best }
+    bestCache.set(db, entry)
+  }
+  return entry
+}
+
 /** Joueurs qui passent les filtres, classés, au plus `limit` ; `total` compte tous ceux qui passent. */
 export function searchScouts(db: ScoutDb, f: ScoutFilters, today: GameDate, freeLabel = ''): { rows: ScoutRow[]; total: number } {
   const q = normalizeText(f.search)
@@ -191,23 +258,42 @@ export function searchScouts(db: ScoutDb, f: ScoutFilters, today: GameDate, free
   const free = normalizeText(freeLabel)
   const clubMatch = db.clubs.map((c) => !clubQ || normalizeText(c.name).includes(clubQ))
   const ages = agesAt(db, today)
-  const rows: ScoutRow[] = []
+  const positionIdx = f.positions.map((p) => POSITION_INDEX[p])
+  // meilleure note : sur tous les rôles (gardée en mémoire), ou sur ceux des postes choisis
+  const allRoles = f.roles.map(compileRole)
+  const cache = !f.role && !f.positions.length ? bestAll(db, f.roles, allRoles) : null
+  const roleSubset = f.positions.length ? allRoles.filter((c) => c.role.positions.some((p) => f.positions.includes(p))) : allRoles
+  const chosen = f.role ? compileRole(f.role) : null
+
+  const found: { player: ScoutPlayer; age: number; score: number; role: RoleDefinition | null }[] = []
   for (const p of db.players) {
+    if (f.hideLoaned && p.owner >= 0) continue
     if (clubQ) {
       const ok = p.club >= 0 ? clubMatch[p.club] : free !== '' && free.startsWith(clubQ)
       if (!ok) continue
     }
     if (f.nationality && p.nationality !== f.nationality) continue
-    if (f.position && (scoutFamiliarity(p, f.position) ?? 0) < SCOUT_PLAYS_AT) continue
+    if (positionIdx.length && !positionIdx.some((i) => p.positions[i] >= SCOUT_PLAYS_AT)) continue
     const age = ages[p.index]
     if (f.minAge !== null && age < f.minAge) continue
     if (f.maxAge !== null && age > f.maxAge) continue
     if (q && !names?.[p.index].includes(q)) continue
-    rows.push({ player: p, age, rating: f.role ? rateScout(p, f.role, f.position ?? undefined) : null })
+    if (chosen) found.push({ player: p, age, score: fastScore(p, chosen), role: chosen.role })
+    else if (cache) {
+      const r = cache.best[p.index]
+      found.push({ player: p, age, score: cache.scores[p.index], role: r >= 0 ? f.roles[r] : null })
+    } else {
+      const b = bestOf(p, roleSubset)
+      found.push({ player: p, age, score: b.score, role: b.role >= 0 ? roleSubset[b.role].role : null })
+    }
   }
-  const byName = (a: ScoutRow, b: ScoutRow) => a.player.name.localeCompare(b.player.name)
-  if (f.sort === 'rating' && f.role) rows.sort((a, b) => (b.rating?.score ?? 0) - (a.rating?.score ?? 0) || byName(a, b))
-  else if (f.sort === 'age') rows.sort((a, b) => a.age - b.age || byName(a, b))
-  else rows.sort(byName)
-  return { rows: rows.slice(0, f.limit), total: rows.length }
+  const byName = (a: { player: ScoutPlayer }, b: { player: ScoutPlayer }) => a.player.name.localeCompare(b.player.name)
+  if (f.sort === 'rating') found.sort((a, b) => b.score - a.score || byName(a, b))
+  else if (f.sort === 'age') found.sort((a, b) => a.age - b.age || byName(a, b))
+  else found.sort(byName)
+  // note détaillée (badge) seulement pour les lignes affichées
+  const rows = found.slice(0, f.limit).map(({ player, age, role }): ScoutRow => ({
+    player, age, ratedRole: role, rating: role ? rateScout(player, role) : null,
+  }))
+  return { rows, total: found.length }
 }

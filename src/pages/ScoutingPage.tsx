@@ -7,7 +7,11 @@ import { Button } from '@/components/ui/button'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import {
+  DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuSeparator, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { EmptyState, PageHeader, SectionTitle } from '@/components/layout'
 import { LoanBadge, PositionChip } from '@/components/chips'
 import { Flag, NationalityPicker } from '@/components/Nationality'
@@ -28,7 +32,6 @@ import { getSaveLink, lastSavePath, setSaveLink } from '@/lib/saveLink'
 import { useI18n } from '@/i18n'
 import { useStore } from '@/store'
 
-const ALL = 'all'
 /** Lignes affichées au plus : au-delà, il faut affiner les filtres. */
 const LIMIT = 200
 
@@ -129,12 +132,13 @@ function ScoutDetail({ db, player, today, roles }: { db: ScoutDb; player: ScoutP
 }
 
 export function ScoutingPage() {
-  const { t, lang } = useI18n()
+  const { t, lang, roleName } = useI18n()
   const { roles, activeClub } = useStore()
   const [db, setDb] = useState<ScoutDb | null | undefined>(undefined)
   const [reading, setReading] = useState(false)
   const [search, setSearch] = useState('')
-  const [position, setPosition] = useState<Position | null>(null)
+  const [positions, setPositions] = useState<Position[]>([])
+  const [hideLoaned, setHideLoaned] = useState(false)
   const [role, setRole] = useState<RoleDefinition | null>(null)
   const [minAge, setMinAge] = useState('')
   const [maxAge, setMaxAge] = useState('')
@@ -172,15 +176,23 @@ export function ScoutingPage() {
   }
 
   const today = useMemo(() => (db ? scoutToday(db) : null), [db])
-  const positionRoles = useMemo(() => (position ? roles.filter((r) => r.positions.includes(position)) : roles), [roles, position])
-  const filters = useDeferredValue({ search, position, role, minAge, maxAge, nationality, club, sort })
-  const result = useMemo(() => {
-    if (!db || !today) return null
+  // meilleure note : rôles avec ballon et profils du notebook (les rôles sans ballon n'ont que 2-3 attributs clés)
+  const bestRoles = useMemo(() => roles.filter((r) => r.phase !== 'oop'), [roles])
+  const positionRoles = useMemo(
+    () => (positions.length ? roles.filter((r) => r.positions.some((p) => positions.includes(p))) : roles), [roles, positions])
+  // objet stable (sinon la recherche repartirait à chaque rendu), différé pour garder la saisie fluide
+  const filters = useDeferredValue(useMemo(() => {
     const age = (s: string) => (s.trim() === '' || !Number.isFinite(Number(s)) ? null : Number(s))
-    return searchScouts(db, {
-      ...filters, minAge: age(filters.minAge), maxAge: age(filters.maxAge), nationality: filters.nationality || null, limit: LIMIT,
-    }, today, t.scouting.free)
-  }, [db, today, filters, t])
+    return {
+      search, positions, role, roles: bestRoles, minAge: age(minAge), maxAge: age(maxAge), nationality: nationality || null, club, hideLoaned, sort, limit: LIMIT,
+    }
+  }, [search, positions, role, bestRoles, minAge, maxAge, nationality, club, hideLoaned, sort]))
+  const result = useMemo(() => (db && today ? searchScouts(db, filters, today, t.scouting.free) : null), [db, today, filters, t])
+  const togglePosition = (p: Position, on: boolean) => {
+    const next = POSITIONS.filter((x) => (x === p ? on : positions.includes(x)))
+    setPositions(next)
+    if (role && next.length && !role.positions.some((x) => next.includes(x))) setRole(null)
+  }
 
   const dateLabel = (d: GameDate) => new Date(`${isoDate(d)}T00:00:00`).toLocaleDateString(lang, { day: 'numeric', month: 'long', year: 'numeric' })
 
@@ -213,22 +225,31 @@ export function ScoutingPage() {
           <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input className="h-8 w-52 pl-8" placeholder={t.scouting.search} value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
-        <Select value={position ?? ALL} onValueChange={(v) => {
-          const pos = v === ALL ? null : (v as Position)
-          setPosition(pos)
-          if (pos && role && !role.positions.includes(pos)) setRole(null)
-        }}>
-          <SelectTrigger size="sm" className="h-8 w-40"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>{t.squad.allPositions}</SelectItem>
-            {POSITIONS.map((p) => <SelectItem key={p} value={p}>{t.positions[p]}</SelectItem>)}
-          </SelectContent>
-        </Select>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" className="h-8 w-44 justify-between font-normal">
+              <span className="truncate">{positions.length ? positions.map((p) => t.positions[p]).join(', ') : t.squad.allPositions}</span>
+              <ChevronsUpDownIcon className="size-3.5 opacity-50" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-48">
+            <DropdownMenuCheckboxItem checked={!positions.length} onSelect={(e) => e.preventDefault()}
+              onCheckedChange={() => setPositions([])}>{t.squad.allPositions}</DropdownMenuCheckboxItem>
+            <DropdownMenuSeparator />
+            {POSITIONS.map((p) => (
+              <DropdownMenuCheckboxItem key={p} checked={positions.includes(p)} onSelect={(e) => e.preventDefault()}
+                onCheckedChange={(on) => togglePosition(p, on === true)}>{t.positions[p]}</DropdownMenuCheckboxItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
         <RoleSelect roles={positionRoles} value={role} onChange={setRole} />
         <Input className="h-8 w-20" type="number" min={14} max={45} placeholder={t.scouting.minAge} value={minAge} onChange={(e) => setMinAge(e.target.value)} />
         <Input className="h-8 w-20" type="number" min={14} max={45} placeholder={t.scouting.maxAge} value={maxAge} onChange={(e) => setMaxAge(e.target.value)} />
         <NationalityPicker value={nationality} onChange={setNationality} className="h-8 w-48" />
         <Input className="h-8 w-40" placeholder={t.scouting.club} value={club} onChange={(e) => setClub(e.target.value)} />
+        <label className="flex items-center gap-2 text-xs text-slate-300">
+          <Switch checked={hideLoaned} onCheckedChange={setHideLoaned} />{t.scouting.hideLoaned}
+        </label>
         <Select value={sort} onValueChange={(v) => setSort(v as ScoutSort)}>
           <SelectTrigger size="sm" className="h-8 w-32"><SelectValue /></SelectTrigger>
           <SelectContent>
@@ -239,7 +260,7 @@ export function ScoutingPage() {
 
       <div className="flex min-h-0 flex-1">
         <div className="min-w-0 flex-1 overflow-auto">
-          {!role && <p className="border-b border-border px-5 py-2 text-xs text-muted-foreground">{t.scouting.roleHint}</p>}
+
           <table className="w-full text-[13px]">
             <thead className="sticky top-0 z-10 bg-card text-left text-xs text-muted-foreground">
               <tr className="border-b border-border">
@@ -249,11 +270,11 @@ export function ScoutingPage() {
                 <th className="px-2 py-2">{t.squad.col.positions}</th>
                 <th className="px-2 py-2">{t.player.foot}</th>
                 <th className="px-2 py-2">{t.player.contractEnd}</th>
-                {role && <th className="px-3 py-2 text-right">{t.scouting.rating}</th>}
+                <th className="px-3 py-2 text-right">{role ? t.scouting.rating : t.scouting.bestRating}</th>
               </tr>
             </thead>
             <tbody>
-              {result.rows.map(({ player: p, age, rating }) => {
+              {result.rows.map(({ player: p, age, rating, ratedRole }) => {
                 const owner = clubName(db, p.owner)
                 return (
                   <tr key={p.index} onClick={() => setSelected(p)}
@@ -273,7 +294,14 @@ export function ScoutingPage() {
                     </td>
                     <td className="px-2 py-1.5">{t.foot[scoutFoot(p)]}</td>
                     <td className="px-2 py-1.5 tabular-nums text-slate-300">{p.contractEnd ? isoDate(p.contractEnd) : '–'}</td>
-                    {role && <td className="px-3 py-1.5 text-right">{rating && <RatingBadge rating={rating} size="sm" />}</td>}
+                    <td className="px-3 py-1.5">
+                      {rating && ratedRole && (
+                        <span className="flex items-center justify-end gap-2">
+                          {!role && <span className="max-w-40 truncate text-[11px] text-muted-foreground">{roleName(ratedRole)}</span>}
+                          <RatingBadge rating={rating} size="sm" />
+                        </span>
+                      )}
+                    </td>
                   </tr>
                 )
               })}
@@ -285,7 +313,7 @@ export function ScoutingPage() {
         </div>
         <aside className="w-[26rem] shrink-0 overflow-y-auto border-l border-border bg-card/40">
           {selected
-            ? <ScoutDetail db={db} player={selected} today={today} roles={roles} />
+            ? <ScoutDetail db={db} player={selected} today={today} roles={bestRoles} />
             : <EmptyState message={t.scouting.selectHint} />}
         </aside>
       </div>

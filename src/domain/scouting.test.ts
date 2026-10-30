@@ -51,7 +51,8 @@ const bytes = encode([['Real Sociedad', 170], ['Feyenoord', 158]], [
   { name: 'Agent Libre', birthYear: 1990, nation: 143, club: 0xffffffff, positions: ST, finishing: 60 },
 ])
 const finisher: RoleDefinition = { id: 'r', name: 'Finisseur', positions: ['ST'], weights: { finishing: 5 } }
-const base: ScoutFilters = { search: '', position: null, role: null, minAge: null, maxAge: null, nationality: null, club: '', sort: 'name', limit: 100 }
+const base: ScoutFilters = { search: '', positions: [], role: null, roles: [], minAge: null, maxAge: null, nationality: null, club: '', hideLoaned: false, sort: 'name', limit: 100 }
+const stopper: RoleDefinition = { id: 's', name: 'Stoppeur', positions: ['DC'], weights: { finishing: 1, marking: 5 } }
 
 describe('base de scouting', () => {
   const db = decodeScouting(bytes)!
@@ -79,7 +80,7 @@ describe('base de scouting', () => {
 
   it('filtre et classe par note', () => {
     const today = db.gameDate!
-    const { rows, total } = searchScouts(db, { ...base, position: 'ST', role: finisher, sort: 'rating' }, today)
+    const { rows, total } = searchScouts(db, { ...base, positions: ['ST'], role: finisher, sort: 'rating' }, today)
     expect(total).toBe(3)
     expect(rows.map((r) => r.player.name)).toEqual(['Mikel Oyarzábal', 'Orri Óskarsson', 'Agent Libre'])
     expect(searchScouts(db, { ...base, maxAge: 25 }, today).rows.map((r) => r.player.name)).toEqual(['Javi López', 'Orri Óskarsson'])
@@ -88,6 +89,27 @@ describe('base de scouting', () => {
     expect(searchScouts(db, { ...base, club: 'feye' }, today).rows[0].player.name).toBe('Javi López')
     expect(searchScouts(db, { ...base, club: 'lib' }, today, 'Libre').rows[0].player.name).toBe('Agent Libre')
     expect(searchScouts(db, { ...base, limit: 2 }, today)).toMatchObject({ total: 5 })
+  })
+
+  it('donne la meilleure note par défaut, identique au calcul détaillé', () => {
+    const today = db.gameDate!
+    const { rows } = searchScouts(db, { ...base, roles: [finisher, stopper], sort: 'rating' }, today)
+    expect(rows[0].player.name).toBe('Mikel Oyarzábal')
+    expect(rows[0].ratedRole?.id).toBe('r')
+    for (const r of rows) {
+      expect(r.rating?.score).toBe(rateScout(r.player, r.ratedRole!).score)
+      // seuls les rôles des postes connus du joueur comptent
+      expect(r.ratedRole?.positions.some((p) => r.player.positions[p === 'ST' ? 12 : 3] > 1)).toBe(true)
+    }
+    const zub = rows.find((r) => r.player.name === 'Igor Zubeldia')
+    expect(zub?.ratedRole?.id).toBe('s')
+  })
+
+  it('filtre plusieurs postes et masque les prêtés', () => {
+    const today = db.gameDate!
+    expect(searchScouts(db, { ...base, positions: ['ST', 'DC'] }, today).total).toBe(5)
+    expect(searchScouts(db, { ...base, positions: ['DC'], roles: [finisher, stopper] }, today).rows.every((r) => r.ratedRole?.id === 's')).toBe(true)
+    expect(searchScouts(db, { ...base, hideLoaned: true }, today).rows.map((r) => r.player.name)).not.toContain('Javi López')
   })
 
   it('présente un joueur de la base comme un joueur de l’application', () => {

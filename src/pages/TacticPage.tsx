@@ -3,11 +3,12 @@ import {
   type DragEndEvent, type DragOverEvent, type DragStartEvent,
 } from '@dnd-kit/core'
 import {
-  ColumnsIcon, CopyIcon, EraserIcon, GripVerticalIcon, Maximize2Icon, Minimize2Icon, PanelRightCloseIcon, PanelRightOpenIcon,
-  SaveIcon, SparklesIcon, Trash2Icon, Undo2Icon, WandIcon, XIcon,
+  CheckIcon, ColumnsIcon, CopyIcon, EraserIcon, GripVerticalIcon, Maximize2Icon, Minimize2Icon, PanelRightCloseIcon, PanelRightOpenIcon,
+  Loader2Icon, SparklesIcon, Trash2Icon, Undo2Icon, WandIcon, XIcon,
 } from 'lucide-react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { toast } from 'sonner'
 import { askConfirm } from '@/lib/confirm'
 import { cn } from '@/lib/utils'
 import { useIsPortrait } from '@/lib/windowMode'
@@ -208,24 +209,49 @@ export function TacticPage() {
     }
   }
 
-  const save = async () => {
-    // La formation enregistrée est celle avec ballon.
-    const saved = await saveTactic({ ...draft, formation: layoutName(draft.slots).presetId })
-    setDraft(saved)
-    setDirty(false)
+  // Sauvegarde automatique : peu après la dernière modification, avant de changer de tactique et en quittant la page.
+  // Les écritures passent l'une après l'autre (une nouvelle tactique n'est créée qu'une fois).
+  const draftRef = useRef(draft)
+  const dirtyRef = useRef(dirty)
+  const savedId = useRef(draft.id)
+  const queue = useRef<Promise<void>>(Promise.resolve())
+  useEffect(() => {
+    draftRef.current = draft
+    dirtyRef.current = dirty
+  })
+  const persist = () => {
+    queue.current = queue.current.then(async () => {
+      const snapshot = draftRef.current
+      // La formation enregistrée est celle avec ballon.
+      const saved = await saveTactic({ ...snapshot, id: snapshot.id ?? savedId.current, formation: layoutName(snapshot.slots).presetId })
+      savedId.current = saved.id
+      setDraft((d) => (d === snapshot ? saved : { ...d, id: saved.id }))
+      if (draftRef.current === snapshot) setDirty(false)
+    }).catch((e) => { toast.error(String(e)) })
+    return queue.current
   }
+  useEffect(() => {
+    if (!dirty) return
+    const timer = setTimeout(() => void persist(), 800)
+    return () => clearTimeout(timer)
+  })
+  useEffect(() => () => { if (dirtyRef.current) void persist() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const select = async (value: string) => {
-    if (dirty && !(await askConfirm(t.tactic.unsavedConfirm))) return
+    if (dirty) await persist()
+    const next = value === NEW_TACTIC ? newTactic(t.tactic.defaultName, layout.presetId) : tactics.find((tc) => tc.id === Number(value))!
+    savedId.current = next.id
     setDirty(value === NEW_TACTIC)
-    setDraft(value === NEW_TACTIC ? newTactic(t.tactic.defaultName, layout.presetId) : tactics.find((tc) => tc.id === Number(value))!)
+    setDraft(next)
   }
 
   const remove = async () => {
     if (draft.id === undefined || !(await askConfirm(t.tactic.deleteConfirm(draft.name)))) return
+    await queue.current
     await deleteTactic(draft.id)
-    const next = tactics.find((tc) => tc.id !== draft.id)
-    setDraft(next ?? newTactic(t.tactic.defaultName))
+    const next = tactics.find((tc) => tc.id !== draft.id) ?? newTactic(t.tactic.defaultName)
+    savedId.current = next.id
+    setDraft(next)
     setDirty(false)
   }
 
@@ -262,7 +288,10 @@ export function TacticPage() {
                   <Trash2Icon />
                 </Button>
               )}
-              <Button onClick={save} disabled={!dirty}><SaveIcon />{dirty ? t.common.save : t.common.saved}</Button>
+              <span className="inline-flex h-8 items-center gap-1.5 px-1 text-xs text-muted-foreground" title={t.tactic.autoSaveTitle}>
+                {dirty ? <Loader2Icon className="size-3.5 animate-spin" /> : <CheckIcon className="size-3.5 text-emerald-400" />}
+                {dirty ? t.tactic.autoSaving : t.common.saved}
+              </span>
             </>
           }>
           <Select value={draft.id !== undefined ? String(draft.id) : NEW_TACTIC} onValueChange={select}>

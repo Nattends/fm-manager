@@ -115,8 +115,9 @@ export const LOAN_STYLE = 'bg-cyan-500/15 text-cyan-300 ring-cyan-500/30'
 
 /** Bouton de poids d'attribut dans l'écran Rôles (×5 / ×3 / ×1 / ×0). */
 export function weightStyle(weight: number): string {
-  if (!weight) return 'border-border text-slate-500 hover:border-slate-600 hover:text-slate-300'
-  if (weight >= 5) return 'border-emerald-400/80 bg-emerald-500/25 text-emerald-100'
-  if (weight >= 3) return 'border-emerald-600/80 bg-emerald-600/15 text-emerald-200'
-  return 'border-sky-700/80 bg-sky-700/15 text-sky-200'
+  // teintes franches pour repérer d'un coup d'œil : essentiel (ambre) > clé (vert) > préféré (bleu) > non compté (effacé)
+  if (!weight) return 'border-transparent text-slate-600 hover:border-slate-700 hover:text-slate-400'
+  if (weight >= 5) return 'border-amber-400 bg-amber-400/30 font-semibold text-amber-50 shadow-[inset_3px_0_0_var(--color-amber-400)]'
+  if (weight >= 3) return 'border-emerald-500/70 bg-emerald-500/20 font-medium text-emerald-100 shadow-[inset_3px_0_0_var(--color-emerald-500)]'
+  return 'border-sky-800/70 bg-sky-900/20 text-sky-300'
 }

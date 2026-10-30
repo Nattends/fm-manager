@@ -191,6 +191,11 @@ export function RolesPage() {
               </ToggleGroup>
             </div>
 
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              {([5, 3, 1, 0] as const).map((w) => (
+                <span key={w} className={cn('inline-flex h-6 items-center rounded-md border px-2', weightStyle(w))}>{t.roles.legend[w]}</span>
+              ))}
+            </div>
             <div className="grid grid-cols-4 gap-6">
               {ATTRIBUTE_GROUP_IDS.map((g) => (
                 <div key={g}>

@@ -64,6 +64,8 @@ export function RolePicker({ roles, value, current, position, phase, player, onC
         <button type="button" title={roleName(current)}
           onPointerDown={(e) => e.stopPropagation()}
           className={cn('flex min-w-0 items-center gap-1 rounded px-1 text-left text-slate-300 outline-none hover:bg-secondary focus-visible:ring-2 focus-visible:ring-ring/50', className)}>
+          {/* note du joueur placé pour le rôle choisi, juste avant le nom du rôle */}
+          {player && <RatingBadge rating={rateRole(player, current, position)} size="sm" className="h-4 min-w-7 shrink-0 px-1 text-[10px]" />}
           <span className="min-w-0 flex-1 truncate">{roleName(current)}</span>
           <ChevronsUpDownIcon className="size-3 shrink-0 opacity-50" />
         </button>
