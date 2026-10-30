@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { ageAt, displayValue, FM_NATIONS, footFrom, isoDate, planSaveImport, SAVE_VALUES, saveFields, wageEuros, type SavePlayer } from './fmSave'
+import {
+  ageAt, displayValue, FM_NATIONS, footFrom, isoDate, planSaveImport, SAVE_VALUES, saveFields, valueEuros, wageEuros, type SavePlayer,
+} from './fmSave'
 import { ALL_ATTRIBUTES } from './attributes'
 import type { Player } from './types'
 
@@ -19,6 +21,7 @@ function fort(overrides: Partial<SavePlayer> = {}): SavePlayer {
     values,
     contractEnd: { day: 181, year: 2031 },
     wage: 42951,
+    value: 25_625_382,
     onLoan: false,
     hostClub: '',
     ...overrides,
@@ -50,6 +53,12 @@ describe('conversion des valeurs de la sauvegarde', () => {
     expect(wageEuros(42951)).toBe(50000)
     expect(wageEuros(7207)).toBe(8400)
     expect(wageEuros(0)).toBeNull()
+  })
+
+  it('convertit la valeur en euros (Oyarzábal : 64 427 392 £, fourchette du jeu 68-75 M€)', () => {
+    expect(valueEuros(64_427_392)).toBe(75_000_000)
+    expect(valueEuros(0)).toBe(0)
+    expect(valueEuros(null)).toBeNull()
   })
 
   it('déduit le pied fort', () => {
@@ -103,9 +112,11 @@ describe('plan d’import depuis la sauvegarde', () => {
     const a = plan.actions[0]
     expect(a.kind).toBe('update')
     expect(a.player).toMatchObject({
-      id: 12, name: 'Hector Fort', wage: 50000, caStars: 3, status: 'key', notes: 'note', photo: 'data:x',
+      id: 12, name: 'Hector Fort', wage: 50000, value: 29_831_000, caStars: 3, status: 'key', notes: 'note', photo: 'data:x',
       contractEnd: '2031-06-30',
     })
+    // valeur inconnue dans la sauvegarde : celle déjà enregistrée est gardée
+    expect(planSaveImport([fort({ value: null })], [existing], club, today).actions[0].player.value).toBe(1e8)
     expect(a.player.attributes.concentration).toBe(9)
     expect(a.player.positions.WBR).toBe(19)
     expect(plan.missing).toEqual([])
@@ -116,6 +127,7 @@ describe('plan d’import depuis la sauvegarde', () => {
     const plan = planSaveImport([fort({ name: 'Jon Martín' })], [existing, other], club, today)
     expect(plan.actions[0].kind).toBe('create')
     expect(plan.actions[0].player.clubId).toBe(4)
+    expect(plan.actions[0].player.value).toBe(29_831_000)
     expect(plan.missing.map((p) => p.id)).toEqual([12, 13])
   })
 })

@@ -3,7 +3,7 @@ import {
   CUSTOM_FORMATION_ID, getFormation, makeSlot, matchPreset, type Formation, type FormationSlot,
 } from './formations'
 import { hungarianMax } from './hungarian'
-import { formationName, isFieldCell, laneCol, positionAt } from './pitch'
+import { formationName, isFieldCell, narrowCells, positionAt } from './pitch'
 import type { Position } from './positions'
 import type { AttributeKey } from './attributes'
 import { rateRole, roleWeights, type RoleRating } from './rating'
@@ -24,7 +24,7 @@ export interface LineupSlot {
   slot: FormationSlot
   /** Poste enregistré dans la tactique (les deux phases). */
   tacticSlot: TacticSlot
-  /** Case, rôle et devoir dans la phase affichée. */
+  /** Case et rôle dans la phase affichée. */
   shape: SlotShape
   role: RoleDefinition
   starter: RatedPlayer | null
@@ -43,10 +43,10 @@ export interface Lineup {
 }
 
 function shapeOf(s: SlotShape): SlotShape {
-  return { row: s.row, col: s.col, roleId: s.roleId, duty: s.duty }
+  return { row: s.row, col: s.col, roleId: s.roleId }
 }
 
-/** Les postes vus dans une phase : row / col / rôle / devoir de cette phase. */
+/** Les postes vus dans une phase : row / col / rôle de cette phase. */
 export function phaseSlots(slots: TacticSlot[], phase: Phase): TacticSlot[] {
   return phase === 'ip' ? slots : slots.map((s) => ({ ...s, ...shapeOf(s.oop) }))
 }
@@ -62,7 +62,7 @@ export function mergePhase(slots: TacticSlot[], phase: Phase, view: TacticSlot[]
   })
 }
 
-/** Modifie la case, le rôle ou le devoir d'un poste dans une phase. */
+/** Modifie la case ou le rôle d'un poste dans une phase. */
 export function patchShape(slots: TacticSlot[], phase: Phase, slotId: string, patch: Partial<SlotShape>): TacticSlot[] {
   return slots.map((s) => {
     if (s.slotId !== slotId) return s
@@ -85,7 +85,7 @@ export interface Assignment {
 /** Slots de tactique par défaut pour une formation (rôle par défaut, aucun verrou). */
 export function defaultTacticSlots(formation: Formation): TacticSlot[] {
   return formation.slots.map((s) => {
-    const shape: SlotShape = { row: s.row, col: s.col, roleId: s.defaultRole, duty: 'auto' }
+    const shape: SlotShape = { row: s.row, col: s.col, roleId: s.defaultRole }
     return { slotId: s.id, ...shape, oop: { ...shape, roleId: defaultRoleFor(s.position, 'oop') }, lockedPlayerId: null }
   })
 }
@@ -102,7 +102,8 @@ export function normalizeTacticSlots(slots: Partial<TacticSlot>[], formationId: 
   })
   // Tactiques enregistrées avant les phases de jeu : sans ballon = mêmes cases, rôle sans ballon par défaut.
   return base.map((s) => {
-    const shape: SlotShape = { row: s.row!, col: s.col!, roleId: s.roleId!, duty: s.duty ?? 'auto' }
+    // le devoir des anciennes tactiques (FM24) n'est pas repris
+    const shape: SlotShape = { row: s.row!, col: s.col!, roleId: s.roleId! }
     const oop = s.oop ? shapeOf(s.oop) : { ...shape, roleId: defaultRoleFor(positionAt(shape.row, shape.col) ?? 'MC', 'oop') }
     return { slotId: s.slotId!, ...shape, oop, lockedPlayerId: s.lockedPlayerId ?? null }
   })
@@ -125,7 +126,7 @@ export function layoutName(slots: TacticSlot[]): { presetId: string; shape: stri
 /**
  * Déplace une carte de poste vers une case. Si la case est occupée, les deux cartes
  * échangent leur place. Un rôle qui n'existe pas au nouveau poste est remplacé par
- * le rôle par défaut de ce poste (et le devoir remis à « auto »).
+ * le rôle par défaut de ce poste.
  */
 export function moveSlot(slots: TacticSlot[], slotId: string, row: number, col: number, roles: RoleDefinition[]): TacticSlot[] {
   const moving = slots.find((s) => s.slotId === slotId)
@@ -140,7 +141,7 @@ export function moveSlot(slots: TacticSlot[], slotId: string, row: number, col: 
     // rôle remplacé par le rôle par défaut du poste, dans la même phase (avec / sans ballon)
     return keepRole
       ? { ...s, row: r, col: c }
-      : { ...s, row: r, col: c, roleId: defaultRoleFor(position, role.phase ?? 'ip'), duty: 'auto' }
+      : { ...s, row: r, col: c, roleId: defaultRoleFor(position, role.phase ?? 'ip') }
   }
 
   return slots.map((s) => {
@@ -151,25 +152,23 @@ export function moveSlot(slots: TacticSlot[], slotId: string, row: number, col: 
 }
 
 /**
- * Une carte peut aller sur une case de champ si aucune autre carte n'occupe une colonne
- * voisine sur la même ligne (les cartes se chevaucheraient). Une case occupée reste
- * possible : les deux cartes échangent leur place.
+ * Une carte peut aller sur toute case de champ (5 couloirs, 3 en attaque). Une case occupée
+ * reste possible : les deux cartes échangent leur place.
  */
 export function canPlace(slots: TacticSlot[], slotId: string, row: number, col: number): boolean {
-  if (!isFieldCell(row, col)) return false
-  return !slots.some((s) => s.slotId !== slotId && s.row === row && Math.abs(s.col - col) === 1)
+  return slots.some((s) => s.slotId === slotId) && isFieldCell(row, col)
 }
 
 /**
- * Tactiques enregistrées avec l'ancienne grille à 5 couloirs (avant les demi-espaces) :
- * chaque couloir devient sa colonne dans la grille à 9 colonnes.
+ * Tactiques enregistrées avec la grille à 9 colonnes (demi-espaces) : chaque phase est ramenée
+ * sur les 5 couloirs de FM (voir `narrowCells`).
  */
-export function widenLegacyGrid(slots: Partial<TacticSlot>[]): Partial<TacticSlot>[] {
-  return slots.map((s) => ({
-    ...s,
-    ...(s.col !== undefined ? { col: laneCol(s.col) } : {}),
-    ...(s.oop ? { oop: { ...s.oop, col: laneCol(s.oop.col) } } : {}),
-  }))
+export function narrowHalfSpaceGrid(slots: Partial<TacticSlot>[]): Partial<TacticSlot>[] {
+  const withCells = slots.every((s) => s.row !== undefined && s.col !== undefined)
+  if (!withCells) return slots
+  const ip = narrowCells(slots.map((s) => ({ row: s.row!, col: s.col! })))
+  const oop = slots.every((s) => s.oop) ? narrowCells(slots.map((s) => ({ row: s.oop!.row, col: s.oop!.col }))) : null
+  return slots.map((s, i) => ({ ...s, ...ip[i], ...(oop ? { oop: { ...s.oop!, ...oop[i] } } : {}) }))
 }
 
 /**

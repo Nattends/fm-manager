@@ -29,15 +29,6 @@ export function scoreSolid(score: number): string {
   return 'bg-rose-500 text-white ring-rose-400'
 }
 
-/** Contour de photo selon la note. */
-export function scoreRing(score: number): string {
-  if (score >= 88) return 'ring-cyan-400'
-  if (score >= 75) return 'ring-emerald-500'
-  if (score >= 60) return 'ring-lime-400'
-  if (score >= 45) return 'ring-amber-400'
-  return 'ring-rose-500'
-}
-
 /** Couleurs d'une ligne du terrain (comme dans FM) : gardien, défense, milieu, attaque. */
 export type LineColorKey = 'goalkeeper' | 'defence' | 'midfield' | 'attack'
 

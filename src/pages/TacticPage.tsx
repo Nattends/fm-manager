@@ -3,7 +3,8 @@ import {
   type DragEndEvent, type DragOverEvent, type DragStartEvent,
 } from '@dnd-kit/core'
 import {
-  CheckIcon, ColumnsIcon, CopyIcon, EraserIcon, GripVerticalIcon, Maximize2Icon, Minimize2Icon, PanelRightCloseIcon, PanelRightOpenIcon,
+  CheckIcon, ColumnsIcon, CopyIcon, EraserIcon, GripVerticalIcon, Maximize2Icon, Minimize2Icon,
+  PanelBottomCloseIcon, PanelBottomOpenIcon, PanelRightCloseIcon, PanelRightOpenIcon,
   Loader2Icon, SparklesIcon, Trash2Icon, Undo2Icon, WandIcon, XIcon,
 } from 'lucide-react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
@@ -23,18 +24,18 @@ import { FamiliarityTag, PositionChip } from '@/components/chips'
 import { PageHeader, StatTile } from '@/components/layout'
 import { Nationality } from '@/components/Nationality'
 import { RolePicker } from '@/components/RolePicker'
-import { PlayerAvatar, RatingBadge } from '@/components/ui'
-import { LINE_COLORS, attrColor, lineColorOf, scoreColor, scoreRing, scoreText } from '@/components/styles'
+import { RatingBadge } from '@/components/ui'
+import { LINE_COLORS, attrColor, lineColorOf, scoreColor, scoreText } from '@/components/styles'
 import { CUSTOM_FORMATION_ID, FORMATIONS, getFormation, type Formation } from '@/domain/formations'
 import {
   bestEleven, benchPlayer, canPlace, clearEleven, computeLineup, fillEmptySlots, copyInPossession, keyAttributesAt, rateAtSlot, defaultTacticSlots, isAvailable, layoutName, mergePhase, moveSlot,
   patchShape, phaseSlots, placePlayer, summarizeLineup,
   type Assignment, type Lineup, type LineupSlot, type LineupSummary, type PitchLine,
 } from '@/domain/lineup'
-import { PITCH_COLS, PITCH_ROWS, cellCenter, isHalfSpace, positionAt } from '@/domain/pitch'
+import { PITCH_COLS, PITCH_ROWS, cellCenter, positionAt } from '@/domain/pitch'
 import { POSITIONS } from '@/domain/positions'
 import { bestRole, type RoleRating } from '@/domain/rating'
-import type { Duty, NewTactic, Phase, Player, RoleDefinition, TacticSlot } from '@/domain/types'
+import type { NewTactic, Phase, Player, RoleDefinition, TacticSlot } from '@/domain/types'
 import { useI18n } from '@/i18n'
 import { useStore } from '@/store'
 import { PlayerSheet } from './PlayerSheet'
@@ -55,25 +56,30 @@ const PHASES: Phase[] = ['ip', 'oop']
 
 type PanelTab = 'backups' | 'squad' | 'instructions'
 
-const DUTIES: Duty[] = ['auto', 'defend', 'support', 'attack']
 
-/** Largeur / hauteur du terrain affiché (plus large que réel, pour des cartes lisibles). */
-const PITCH_RATIO = 1.25
-/** Grande vue : terrain horizontal (attaque vers la droite), proportions d'un vrai terrain. */
-const LANDSCAPE_RATIO = 1.55
 /**
- * Deux terrains côte à côte : chaque terrain prend la forme de sa zone (plus haut que large)
- * au lieu de garder PITCH_RATIO, ce qui laissait de grands vides au-dessus et en dessous.
+ * Largeur / hauteur maximale du terrain (plus large que réel, pour des cartes lisibles). Le terrain est
+ * toujours vertical (but adverse en haut) et prend toute la hauteur disponible ; il n'est moins large
+ * que si sa zone l'est.
  */
-const COMPACT_MIN_RATIO = 0.7
+const PITCH_RATIO = 1.25
 const BIG_VIEW_KEY = 'tactic.bigView'
 
 /**
- * Position d'un point du terrain (coordonnées de la vue verticale, en %) à l'écran.
- * En grande vue, le terrain est tourné : le gardien à gauche, le couloir gauche en haut.
+ * Libellé d'un bouton de la barre d'outils : masqué (icône seule, détail au survol) sous 1536 px de large,
+ * pour que la barre tienne sur une ligne et laisse la hauteur au terrain.
  */
-function pitchPoint(x: number, y: number, big: boolean): { left: string; top: string } {
-  return big ? { left: `${100 - y}%`, top: `${x}%` } : { left: `${x}%`, top: `${y}%` }
+const TOOL_LABEL = 'max-2xl:sr-only'
+
+/** Position d'un point du terrain (en %) à l'écran. */
+function pitchPoint(x: number, y: number): { left: string; top: string } {
+  return { left: `${x}%`, top: `${y}%` }
+}
+
+const PANEL_KEY = 'tactic.squadPanel'
+
+function loadPanelShown(): boolean {
+  try { return localStorage.getItem(PANEL_KEY) !== '0' } catch { return true }
 }
 
 function loadBigView(): boolean {
@@ -92,7 +98,7 @@ function remapSlots(prev: TacticSlot[], formation: Formation, roles: RoleDefinit
     if (!old) return fresh
     const role = roles.find((r) => r.id === old.roleId)
     const keepRole = role?.positions.includes(formation.slots[i].position)
-    return { ...fresh, lockedPlayerId: old.lockedPlayerId, ...(keepRole ? { roleId: old.roleId, duty: old.duty } : {}) }
+    return { ...fresh, lockedPlayerId: old.lockedPlayerId, ...(keepRole ? { roleId: old.roleId } : {}) }
   })
 }
 
@@ -109,16 +115,21 @@ export function TacticPage() {
   const [overSlot, setOverSlot] = useState<{ phase: Phase; slotId: string } | null>(null)
   const [tab, setTab] = useState<PanelTab>('squad')
   const [big, setBigState] = useState(loadBigView)
+  /** Panneau de l'effectif en grande vue (par-dessus le terrain), fermé par défaut. */
   const [panelOpen, setPanelOpen] = useState(false)
+  /** Panneau de l'effectif hors grande vue, à côté ou sous le terrain : masquable, retenu d'une session à l'autre. */
+  const [panelShown, setPanelShownState] = useState(loadPanelShown)
+  const setPanelShown = (value: boolean) => {
+    setPanelShownState(value)
+    try { localStorage.setItem(PANEL_KEY, value ? '1' : '0') } catch { /* ignoré */ }
+  }
   /** Phase affichée sur le terrain (avec ou sans ballon), ou les deux terrains côte à côte. */
   const [phaseView, setPhaseView] = useState<PhaseView>('both')
   const both = phaseView === 'both'
   /** Phase des réglages de la barre (formation) et du panneau : avec ballon quand les deux sont affichées. */
   const phase: Phase = both ? 'ip' : phaseView
-  // Fenêtre en portrait (écran vertical) : terrain vertical même en grande vue, panneau sous le terrain.
-  // Les deux phases côte à côte : terrains verticaux.
+  // Fenêtre en portrait (écran vertical) : panneau sous le terrain.
   const portrait = useIsPortrait()
-  const rotated = big && !portrait && !both
   const stacked = portrait && !big
   const setBig = (value: boolean) => {
     setBigState(value)
@@ -161,7 +172,7 @@ export function TacticPage() {
   const apply = (a: Assignment) => update(a)
   const updateSlot = (slotId: string, patch: Partial<TacticSlot>) =>
     update({ slots: draft.slots.map((s) => (s.slotId === slotId ? { ...s, ...patch } : s)) })
-  const updateShape = (ph: Phase, slotId: string, patch: { roleId?: string; duty?: Duty }) =>
+  const updateShape = (ph: Phase, slotId: string, patch: { roleId?: string }) =>
     update({ slots: patchShape(draft.slots, ph, slotId, patch) })
   const updateView = (ph: Phase, next: TacticSlot[]) => update({ slots: mergePhase(draft.slots, ph, next) })
 
@@ -259,7 +270,8 @@ export function TacticPage() {
   const fillXi = () => update({ slots: fillEmptySlots(draft.slots, players, roles, draft.excludedPlayerIds) })
   const bestXi = () => update(bestEleven(draft.slots, players, roles))
   const emptySlots = lineup.slots.filter((s) => !s.starter).length
-  const showPanel = !big || panelOpen
+  const showPanel = big ? panelOpen : panelShown
+  const togglePanel = () => (big ? setPanelOpen((v) => !v) : setPanelShown(!panelShown))
 
   return (
     <DndContext sensors={sensors} collisionDetection={pointerWithin}
@@ -268,20 +280,20 @@ export function TacticPage() {
         <PageHeader title={t.tactic.title}
           actions={
             <>
-              {big && (
+              {/* panneau masqué : la note du XI reste visible dans la barre */}
+              {!showPanel && (
                 <span className={cn('inline-flex h-8 items-center rounded-md px-2.5 text-sm font-semibold tabular-nums ring-1', scoreColor(summary.average))}>
                   {t.tactic.xiRating} {summary.average.toFixed(0)}
                 </span>
               )}
-              {big && (
-                <Button variant="outline" onClick={() => setPanelOpen((v) => !v)}>
-                  {panelOpen ? <PanelRightCloseIcon /> : <PanelRightOpenIcon />}
-                  {panelOpen ? t.tactic.hideSquad : t.tactic.showSquad}
-                </Button>
-              )}
+              {/* afficher / masquer l'effectif : dans toutes les vues (normale, grande, portrait) */}
+              <Button variant="outline" onClick={togglePanel} title={showPanel ? t.tactic.hideSquad : t.tactic.showSquad}>
+                {showPanel ? (stacked ? <PanelBottomCloseIcon /> : <PanelRightCloseIcon />) : (stacked ? <PanelBottomOpenIcon /> : <PanelRightOpenIcon />)}
+                <span className={TOOL_LABEL}>{showPanel ? t.tactic.hideSquad : t.tactic.showSquad}</span>
+              </Button>
               <Button variant="outline" onClick={() => setBig(!big)} title={big ? t.tactic.exitBigViewTitle : t.tactic.bigViewTitle}>
                 {big ? <Minimize2Icon /> : <Maximize2Icon />}
-                {big ? t.tactic.exitBigView : t.tactic.bigView}
+                <span className={TOOL_LABEL}>{big ? t.tactic.exitBigView : t.tactic.bigView}</span>
               </Button>
               {draft.id !== undefined && (
                 <Button variant="destructive" size="icon" onClick={remove} title={t.common.delete} aria-label={t.common.delete}>
@@ -290,21 +302,21 @@ export function TacticPage() {
               )}
               <span className="inline-flex h-8 items-center gap-1.5 px-1 text-xs text-muted-foreground" title={t.tactic.autoSaveTitle}>
                 {dirty ? <Loader2Icon className="size-3.5 animate-spin" /> : <CheckIcon className="size-3.5 text-emerald-400" />}
-                {dirty ? t.tactic.autoSaving : t.common.saved}
+                <span className={TOOL_LABEL}>{dirty ? t.tactic.autoSaving : t.common.saved}</span>
               </span>
             </>
           }>
           <Select value={draft.id !== undefined ? String(draft.id) : NEW_TACTIC} onValueChange={select}>
-            <SelectTrigger size="sm" className="w-48"><SelectValue /></SelectTrigger>
+            <SelectTrigger size="sm" className="w-40"><SelectValue /></SelectTrigger>
             <SelectContent>
               {tactics.map((tc) => <SelectItem key={tc.id} value={String(tc.id)}>{tc.name}</SelectItem>)}
               {draft.id === undefined && <SelectItem value={NEW_TACTIC}>{draft.name || t.tactic.defaultName}</SelectItem>}
               {draft.id !== undefined && <SelectItem value={NEW_TACTIC}>{t.tactic.newTactic}</SelectItem>}
             </SelectContent>
           </Select>
-          <Input className="h-8 w-48" value={draft.name} aria-label={t.tactic.name} onChange={(e) => update({ name: e.target.value })} />
+          <Input className="h-8 w-40" value={draft.name} aria-label={t.tactic.name} onChange={(e) => update({ name: e.target.value })} />
           <Select value={layout.presetId} onValueChange={(v) => updateView(phase, remapSlots(view, getFormation(v), roles))}>
-            <SelectTrigger size="sm" className="w-44" title={both ? t.tactic.formationBothTitle : t.tactic.formationTitle}><SelectValue /></SelectTrigger>
+            <SelectTrigger size="sm" className="w-36" title={both ? t.tactic.formationBothTitle : t.tactic.formationTitle}><SelectValue /></SelectTrigger>
             <SelectContent>
               {layout.presetId === CUSTOM_FORMATION_ID && (
                 <SelectItem value={CUSTOM_FORMATION_ID} disabled>{t.customFormation(layout.shape)}</SelectItem>
@@ -320,12 +332,12 @@ export function TacticPage() {
           </ToggleGroup>
           {phaseView !== 'ip' && (
             <Button variant="ghost" size="sm" onClick={() => update({ slots: copyInPossession(draft.slots) })} title={t.tactic.copyFromIpTitle}>
-              <CopyIcon />{t.tactic.copyFromIp}
+              <CopyIcon /><span className={TOOL_LABEL}>{t.tactic.copyFromIp}</span>
             </Button>
           )}
-          <Button variant="outline" size="sm" onClick={fillXi} disabled={emptySlots === 0} title={t.tactic.fillTitle}><WandIcon />{t.tactic.fill}</Button>
-          <Button variant="outline" size="sm" onClick={bestXi} title={t.tactic.bestTitle}><SparklesIcon />{t.tactic.best}</Button>
-          <Button variant="ghost" size="sm" onClick={clearXi} title={t.tactic.resetTitle}><EraserIcon />{t.tactic.reset}</Button>
+          <Button variant="outline" size="sm" onClick={fillXi} disabled={emptySlots === 0} title={t.tactic.fillTitle}><WandIcon /><span className={TOOL_LABEL}>{t.tactic.fill}</span></Button>
+          <Button variant="outline" size="sm" onClick={bestXi} title={t.tactic.bestTitle}><SparklesIcon /><span className={TOOL_LABEL}>{t.tactic.best}</span></Button>
+          <Button variant="ghost" size="sm" onClick={clearXi} title={t.tactic.resetTitle}><EraserIcon /><span className={TOOL_LABEL}>{t.tactic.reset}</span></Button>
         </PageHeader>
 
         <div className={cn('relative flex min-h-0 flex-1 gap-4 overflow-hidden', big ? 'p-3' : 'p-4', stacked && 'flex-col')}>
@@ -333,12 +345,11 @@ export function TacticPage() {
           <div className="flex min-h-0 min-w-0 flex-1 gap-3">
             {(both ? PHASES : [phase]).map((ph) => (
               <PitchView key={ph} phase={ph} lineup={lineups[ph]} view={views[ph]} roles={roles} starterIds={starterIds}
-                big={big} rotated={rotated} compact={both}
+                big={big}
                 label={both ? `${t.tactic.phase[ph]} · ${summarizeLineup(lineups[ph]).phases[ph].toFixed(0)}` : null}
                 movingId={dragged?.kind === 'card' && dragged.phase === ph ? dragged.slot.slot.id : null}
                 acceptsPlayers={dragged?.kind !== 'card'}
                 onRole={(slotId, roleId) => updateShape(ph, slotId, { roleId })}
-                onDuty={(slotId, duty) => updateShape(ph, slotId, { duty })}
                 onRemove={(s) => updateSlot(s.slot.id, { lockedPlayerId: null })}
                 onOpen={setOpenId} />
             ))}
@@ -347,7 +358,8 @@ export function TacticPage() {
           {showPanel && (
             <aside className={cn(
               'flex min-h-0 shrink-0 flex-col gap-3',
-              stacked ? 'h-[40%] w-full' : 'w-[370px]',
+              // écran vertical : le terrain garde la plus grande part de la hauteur
+              stacked ? 'h-[34%] w-full' : 'w-[370px]',
               big && 'absolute top-3 right-3 bottom-3 z-30 rounded-xl border border-border bg-background/95 p-3 shadow-2xl backdrop-blur animate-in slide-in-from-right-8 fade-in-0',
             )}>
               <SummaryPanel summary={summary} />
@@ -382,7 +394,6 @@ export function TacticPage() {
       <DragOverlay dropAnimation={null}>
         {dragged?.kind === 'player' && (
           <div className="pointer-events-none flex w-max items-center gap-2 rounded-lg border border-amber-400/80 bg-popover px-2.5 py-1.5 text-sm font-semibold shadow-2xl">
-            <PlayerAvatar player={dragged.player} size={28} />
             {dragged.player.name}
           </div>
         )}
@@ -391,10 +402,7 @@ export function TacticPage() {
             <PositionChip position={dragged.slot.slot.position} />
             <span>{roleName(dragged.slot.role)}</span>
             {dragged.slot.starter && (
-              <>
-                <PlayerAvatar player={dragged.slot.starter.player} size={20} />
-                <span className="text-muted-foreground">{dragged.slot.starter.player.name}</span>
-              </>
+              <span className="text-muted-foreground">· {dragged.slot.starter.player.name}</span>
             )}
           </div>
         )}
@@ -489,8 +497,7 @@ function ReplaceCompare({ phase, shown, ip, oop, incoming, swap }: {
           <span key={i} className="self-center text-[11px] text-muted-foreground">{t.tactic.versus}</span>
         ) : (
           <div key={p.id} className={cn('flex min-w-0 flex-col items-center gap-1 text-center', i === 2 && 'text-amber-200')}>
-            <PlayerAvatar player={p} size={40} />
-            <span className="w-full truncate font-semibold">{p.name}</span>
+            <span className="line-clamp-2 w-full font-semibold">{p.name}</span>
             <FamiliarityTag value={p.positions[position]} className="text-[11px]" />
           </div>
         ))}
@@ -605,7 +612,6 @@ function SquadList({ players, roles, excludedIds, starterIds, dropActive, onOpen
                 starterIds.has(player.id) && 'bg-emerald-500/10',
                 available ? 'cursor-grab' : 'cursor-not-allowed opacity-40',
               )}>
-              <PlayerAvatar player={player} size={30} />
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-1.5">
                   <span className="truncate text-[13px] font-medium text-slate-100">{player.name}</span>
@@ -651,7 +657,6 @@ function BackupsList({ lineup, onOpen }: { lineup: Lineup; onOpen: (id: number) 
             <DraggablePlayer key={b.player.id} id={`backup-${s.slot.id}-${b.player.id}`} playerId={b.player.id}>
               <button onClick={() => onOpen(b.player.id)} title={b.player.name}
                 className="flex w-full min-w-0 items-center gap-1.5 rounded-md px-1 py-0.5 text-left hover:bg-secondary/60">
-                <PlayerAvatar player={b.player} size={22} />
                 <span className="min-w-0 flex-1 truncate text-xs text-slate-300">{b.player.name}</span>
                 <RatingBadge rating={b.rating} size="sm" />
               </button>
@@ -664,7 +669,7 @@ function BackupsList({ lineup, onOpen }: { lineup: Lineup; onOpen: (id: number) 
 }
 
 /** Un terrain (une phase de jeu) : marquages, cartes de poste et cases de dépôt pendant un déplacement. */
-function PitchView({ phase, lineup, view, roles, starterIds, big, rotated, compact, label, movingId, acceptsPlayers, onRole, onDuty, onRemove, onOpen }: {
+function PitchView({ phase, lineup, view, roles, starterIds, big, label, movingId, acceptsPlayers, onRole, onRemove, onOpen }: {
   phase: Phase
   lineup: Lineup
   /** Postes vus dans cette phase. */
@@ -673,32 +678,25 @@ function PitchView({ phase, lineup, view, roles, starterIds, big, rotated, compa
   /** Titulaires (pour distinguer échange et remplacement au survol). */
   starterIds: Set<number>
   big: boolean
-  rotated: boolean
-  /** Deux terrains côte à côte : cartes réduites. */
-  compact: boolean
   label: string | null
   /** Carte de cette phase en cours de déplacement. */
   movingId: string | null
   acceptsPlayers: boolean
   onRole: (slotId: string, roleId: string) => void
-  onDuty: (slotId: string, duty: Duty) => void
   onRemove: (slot: LineupSlot) => void
   onOpen: (playerId: number) => void
 }) {
-  // Taille de la zone du terrain, pour adapter ses proportions en vue double.
+  // Taille de la zone du terrain : le terrain prend toute sa hauteur, et sa largeur jusqu'à PITCH_RATIO.
   const areaRef = useRef<HTMLDivElement>(null)
   const [area, setArea] = useState<{ w: number; h: number } | null>(null)
   useEffect(() => {
     const el = areaRef.current
-    if (!el || !compact) return
+    if (!el) return
     const ro = new ResizeObserver(([entry]) => setArea({ w: entry.contentRect.width, h: entry.contentRect.height }))
     ro.observe(el)
     return () => ro.disconnect()
-  }, [compact])
-  const fitted = compact && area && area.h > 0
-    ? Math.min(PITCH_RATIO, Math.max(COMPACT_MIN_RATIO, area.w / area.h))
-    : PITCH_RATIO
-  const ratio = rotated ? LANDSCAPE_RATIO : fitted
+  }, [])
+  const ratio = area && area.h > 0 ? Math.min(PITCH_RATIO, area.w / area.h) : PITCH_RATIO
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
       {label && (
@@ -707,21 +705,20 @@ function PitchView({ phase, lineup, view, roles, starterIds, big, rotated, compa
           {label}
         </div>
       )}
-      {/* Le terrain occupe la plus grande place possible en gardant ses proportions. */}
+      {/* Terrain vertical sur toute la hauteur de sa zone. */}
       <div ref={areaRef} className="flex min-h-0 min-w-0 flex-1 items-center justify-center" style={{ containerType: 'size' }}>
         <div className="relative overflow-hidden rounded-xl shadow-2xl ring-1 ring-emerald-800"
           style={{
-            width: `min(100cqw, ${ratio * 100}cqh)`,
-            aspectRatio: `${ratio}`,
-            background: `radial-gradient(ellipse at center, transparent 50%, rgba(0, 0, 0, 0.35)), repeating-linear-gradient(${rotated ? 90 : 180}deg, #166534 0 ${rotated ? 6.25 : 10}%, #15803d ${rotated ? 6.25 : 10}% ${rotated ? 12.5 : 20}%)`,
+            height: '100cqh',
+            width: `min(100cqw, ${PITCH_RATIO * 100}cqh)`,
+            background: 'radial-gradient(ellipse at center, transparent 50%, rgba(0, 0, 0, 0.35)), repeating-linear-gradient(180deg, #166534 0 10%, #15803d 10% 20%)',
           }}>
-          <PitchLines big={rotated} ratio={ratio} />
-          {movingId && <CellGrid phase={phase} slots={view} movingId={movingId} big={rotated} />}
+          <PitchLines ratio={ratio} />
+          {movingId && <CellGrid phase={phase} slots={view} movingId={movingId} />}
           {lineup.slots.map((s) => (
-            <SlotCard key={s.slot.id} phase={phase} slot={s} roles={roles} starterIds={starterIds} big={big} rotated={rotated} compact={compact}
+            <SlotCard key={s.slot.id} phase={phase} slot={s} roles={roles} starterIds={starterIds} big={big}
               acceptsPlayers={acceptsPlayers}
               onRole={(roleId) => onRole(s.slot.id, roleId)}
-              onDuty={(duty) => onDuty(s.slot.id, duty)}
               onRemove={() => onRemove(s)}
               onOpen={onOpen} />
           ))}
@@ -732,10 +729,10 @@ function PitchView({ phase, lineup, view, roles, starterIds, big, rotated, compa
 }
 
 /**
- * Cases de dépôt affichées pendant le déplacement d'une carte de poste : les 5 couloirs et
- * les demi-espaces, sauf les cases où la carte chevaucherait une voisine.
+ * Cases de dépôt affichées pendant le déplacement d'une carte de poste : 5 par ligne
+ * (défense, milieu défensif, milieu, milieu offensif) et 3 en attaque, comme dans FM.
  */
-function CellGrid({ phase, slots, movingId, big }: { phase: Phase; slots: TacticSlot[]; movingId: string; big: boolean }) {
+function CellGrid({ phase, slots, movingId }: { phase: Phase; slots: TacticSlot[]; movingId: string }) {
   const cells: { row: number; col: number }[] = []
   for (let row = 0; row < PITCH_ROWS; row++) {
     for (let col = 0; col < PITCH_COLS; col++) if (canPlace(slots, movingId, row, col)) cells.push({ row, col })
@@ -744,27 +741,23 @@ function CellGrid({ phase, slots, movingId, big }: { phase: Phase; slots: Tactic
     <>
       {cells.map(({ row, col }) => {
         const occupant = slots.find((s) => s.row === row && s.col === col)
-        return <DropCell key={`${row}:${col}`} phase={phase} row={row} col={col} big={big} occupied={!!occupant && occupant.slotId !== movingId} />
+        return <DropCell key={`${row}:${col}`} phase={phase} row={row} col={col} occupied={!!occupant && occupant.slotId !== movingId} />
       })}
     </>
   )
 }
 
-function DropCell({ phase, row, col, occupied, big }: { phase: Phase; row: number; col: number; occupied: boolean; big: boolean }) {
+function DropCell({ phase, row, col, occupied }: { phase: Phase; row: number; col: number; occupied: boolean }) {
   const { t } = useI18n()
   const { setNodeRef, isOver } = useDroppable({ id: `${CELL_PREFIX}${phase}:${row}:${col}` })
   const { x, y } = cellCenter(row, col)
-  const half = isHalfSpace(col)
   return (
-    <div ref={setNodeRef} style={pitchPoint(x, y, big)}
+    <div ref={setNodeRef} style={pitchPoint(x, y)}
       className={cn(
-        'absolute z-20 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-start rounded-lg border-2 pt-1 text-[10px] leading-tight font-bold transition',
-        big ? 'h-[9%] w-[15%]' : 'h-[14%] w-[9%]',
-        half ? 'border-dotted' : 'border-dashed',
-        isOver ? 'z-30 border-sky-300 bg-sky-400/25 text-sky-100' : half ? 'border-white/15 bg-white/[0.03] text-white/40' : 'border-white/20 bg-white/5 text-white/50',
+        'absolute z-20 flex h-[14%] w-[18.5%] -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-start rounded-lg border-2 border-dashed pt-1 text-[10px] leading-tight font-bold transition',
+        isOver ? 'z-30 border-sky-300 bg-sky-400/25 text-sky-100' : 'border-white/20 bg-white/5 text-white/50',
       )}>
       {t.positions[positionAt(row, col)!]}
-      {half && <span className="font-normal">{t.tactic.halfSpaceShort}</span>}
       {isOver && occupied && <span className="font-normal">{t.tactic.swap}</span>}
     </div>
   )
@@ -779,21 +772,35 @@ function DraggablePlayer({ id, playerId, children }: { id: string; playerId: num
   )
 }
 
-function SlotCard({ phase, slot, roles, starterIds, big, rotated, compact, acceptsPlayers, onRole, onDuty, onRemove, onOpen }: {
+/**
+ * Carte de poste de moins de 10rem de large (écran vertical, surtout avec les deux terrains côte à côte) :
+ * le rôle passe sur sa propre ligne pour garder toute la largeur.
+ */
+const NARROW = {
+  bar: '@max-[10rem]:flex-wrap @max-[10rem]:gap-y-0.5',
+  role: '@max-[10rem]:order-last @max-[10rem]:basis-full',
+}
+
+/**
+ * Taille du texte d'une carte, proportionnelle au terrain (cqh / cqw : zone du terrain) : l'écart entre deux lignes
+ * du terrain vaut 16 % de sa hauteur et une carte fait environ 8 lignes de texte, elle tient donc toujours
+ * dans sa ligne, en paysage comme en portrait ; la largeur (19 % du terrain) la limite aussi.
+ * Tout le contenu de la carte est en em.
+ */
+function cardFont(big: boolean): string {
+  return `clamp(9px, min(1.75cqh, 2.3cqw), ${big ? 17 : 14}px)`
+}
+
+function SlotCard({ phase, slot, roles, starterIds, big, acceptsPlayers, onRole, onRemove, onOpen }: {
   phase: Phase
   slot: LineupSlot
   roles: RoleDefinition[]
   starterIds: Set<number>
   /** Grande vue : cartes agrandies. */
   big: boolean
-  /** Terrain horizontal (grande vue sur écran paysage). */
-  rotated: boolean
-  /** Cartes réduites (deux terrains côte à côte). */
-  compact: boolean
   /** Faux pendant le déplacement d'une carte : seules les cases de la grille sont des cibles. */
   acceptsPlayers: boolean
   onRole: (id: string) => void
-  onDuty: (d: Duty) => void
   /** Retire le titulaire du poste (sans l'écarter). */
   onRemove: () => void
   onOpen: (playerId: number) => void
@@ -815,67 +822,50 @@ function SlotCard({ phase, slot, roles, starterIds, big, rotated, compact, accep
   const fam = starter?.player.positions[position]
   const backup = slot.backups[0]
   const line = LINE_COLORS[lineColorOf(position)]
-  const rated = starter?.rating.rated ? starter.rating.score : null
-  const s = compact
-    ? { width: 'w-[19%]', bar: 'text-[10px]', avatar: big ? 44 : 34, name: big ? 'text-xs' : 'text-[11px]', meta: 'text-[10px]', body: 'gap-1.5 p-1.5', rating: 'sm' as const }
-    : big
-      ? { width: rotated ? 'w-[15%]' : 'w-[19%]', bar: 'text-xs', avatar: 64, name: 'text-[15px]', meta: 'text-xs', body: 'gap-3 p-2.5 pb-3', rating: 'md' as const }
-      : { width: 'w-[19%]', bar: 'text-[11px]', avatar: 50, name: 'text-[13px]', meta: 'text-[11px]', body: 'gap-2.5 p-2 pb-2.5', rating: 'sm' as const }
-  const halfSpace = isHalfSpace(slot.slot.col)
+  // Pas de photo dans l'écran Tactique : la note précède le nom, qui prend toute la largeur de la carte.
+  const s = { bar: 'text-[0.85em]', name: 'text-[1em]', meta: 'text-[0.82em]', body: 'p-[0.5em]' }
 
   return (
-    <div ref={setNodeRef} data-slot={`:`} style={pitchPoint(slot.slot.x, slot.slot.y, rotated)}
+    <div ref={setNodeRef} data-slot={`${phase}:${slot.slot.id}`} style={{ ...pitchPoint(slot.slot.x, slot.slot.y), fontSize: cardFont(big) }}
       className={cn(
-        'absolute z-10 -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-lg border bg-linear-to-b from-slate-900/95 to-slate-950/95 shadow-xl shadow-black/40 backdrop-blur-sm transition',
-        s.width,
+        // 19 % de large : 5 cartes tiennent côte à côte sur une ligne ; @container : disposition selon la largeur de la carte
+        '@container absolute z-10 w-[19%] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-lg border bg-linear-to-b from-slate-900/95 to-slate-950/95 shadow-xl shadow-black/40 backdrop-blur-sm transition',
         isOver ? 'scale-105 border-amber-300 ring-2 ring-amber-300/60' : 'border-white/10',
         cardDragging && 'opacity-30',
       )}>
-      {/* Barre colorée selon la ligne : poste (poignée de déplacement), rôle, devoir */}
-      <div className={cn('flex items-center gap-1 px-1 py-0.5', line.bar, s.bar)}>
+      {/* Barre colorée selon la ligne : poste (poignée de déplacement) et rôle */}
+      <div className={cn('flex items-center gap-[0.3em] px-[0.3em] py-[0.15em]', NARROW.bar, line.bar, s.bar)}>
         <span ref={setHandleRef} {...handleListeners} {...handleAttributes}
           title={isGk ? undefined : t.tactic.dragCard}
-          className={cn('flex shrink-0 touch-none items-center rounded bg-black/25 px-1 font-bold', !isGk && 'cursor-grab hover:bg-black/40')}>
-          {!isGk && <GripVerticalIcon className="-ml-0.5 size-3 opacity-70" />}
+          className={cn('flex h-[1.7em] shrink-0 touch-none items-center rounded bg-black/25 px-[0.35em] font-bold', !isGk && 'cursor-grab hover:bg-black/40')}>
+          {!isGk && <GripVerticalIcon className="-ml-0.5 size-[1.1em] opacity-70" />}
           {t.positions[position]}
-          {halfSpace && <span className="ml-0.5 font-normal opacity-75" title={t.tactic.halfSpace}>{t.tactic.halfSpaceShort}</span>}
         </span>
         <RolePicker roles={roles} value={slot.shape.roleId} current={slot.role} position={position} phase={phase} player={slot.starter?.player} onChange={onRole}
-          className="h-5 flex-1 font-medium text-current hover:bg-black/20" />
-        <Select value={slot.shape.duty} onValueChange={(v) => onDuty(v as Duty)}>
-          <SelectTrigger size="sm" title={t.tactic.duty}
-            className="h-5! w-auto shrink-0 gap-0.5 border-0 bg-black/25 px-1 text-[inherit] font-semibold text-current shadow-none hover:bg-black/40 [&_svg]:size-3 [&_svg]:text-current!">
-            <SelectValue>{t.dutyShort[slot.shape.duty]}</SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {DUTIES.map((k) => <SelectItem key={k} value={k}>{t.duty[k]}</SelectItem>)}
-          </SelectContent>
-        </Select>
+          className={cn('h-[1.7em] flex-1 font-medium text-current hover:bg-black/20', NARROW.role)} />
       </div>
 
       {starter ? (
         <DraggablePlayer id={`xi-${phase}-${slot.slot.id}`} playerId={starter.player.id}>
-          <div className={cn('relative flex cursor-grab items-center', s.body)} onClick={() => onOpen(starter.player.id)}>
-            <div className="relative shrink-0">
-              <PlayerAvatar player={starter.player} size={s.avatar}
-                className={cn('ring-2', rated !== null ? scoreRing(rated) : 'ring-slate-600')} />
-              <RatingBadge rating={starter.rating} size={s.rating} solid className="absolute -right-2 -bottom-1" />
-            </div>
-            <div className="min-w-0 flex-1 pr-3 pl-1">
-              <div className={cn('line-clamp-2 leading-tight font-semibold text-white hover:underline', s.name)}>{starter.player.name}</div>
-              <div className={cn('mt-0.5 truncate text-slate-400', s.meta)}>
-                {t.player.ageValue(starter.player.age)}{starter.player.nationality.trim() && <> · <Nationality value={starter.player.nationality} flagOnly /></>}
-              </div>
-              <div className={cn('truncate', s.meta)} title={t.tactic.familiarityAt(t.positions[position])}>
-                <FamiliarityTag value={fam} />
+          <div className={cn('group/body relative cursor-grab', s.body)} onClick={() => onOpen(starter.player.id)}>
+            <div className="flex items-start gap-[0.4em]">
+              <RatingBadge rating={starter.rating} solid className="h-[1.6em] min-w-[2.3em] px-[0.3em] text-[0.9em]" />
+              <div className={cn('line-clamp-2 min-w-0 leading-tight font-semibold [overflow-wrap:anywhere] text-white hover:underline', s.name)} title={starter.player.name}>
+                {starter.player.name}
               </div>
             </div>
+            <div className={cn('mt-[0.3em] truncate text-slate-400', s.meta)} title={t.tactic.familiarityAt(t.positions[position])}>
+              {t.player.ageValue(starter.player.age)}
+              {starter.player.nationality.trim() && <> · <Nationality value={starter.player.nationality} flagOnly /></>}
+              {' · '}<FamiliarityTag value={fam} />
+            </div>
+            {/* « retirer du XI » au survol, pour laisser toute la place au nom */}
             <Tooltip>
               <TooltipTrigger asChild>
                 <button onClick={(e) => { e.stopPropagation(); onRemove() }} onPointerDown={(e) => e.stopPropagation()}
                   aria-label={t.tactic.removeFromXi}
-                  className="absolute top-1.5 right-1.5 rounded p-0.5 text-slate-500 transition-colors hover:bg-rose-500/20 hover:text-rose-300">
-                  <XIcon className="size-3.5" />
+                  className="absolute top-0.5 right-0.5 rounded bg-slate-950/90 p-0.5 text-slate-500 opacity-0 transition group-hover/body:opacity-100 hover:bg-rose-500/20 hover:text-rose-300 focus-visible:opacity-100">
+                  <XIcon className="size-[1.1em]" />
                 </button>
               </TooltipTrigger>
               <TooltipContent>{t.tactic.removeFromXi}</TooltipContent>
@@ -883,20 +873,19 @@ function SlotCard({ phase, slot, roles, starterIds, big, rotated, compact, accep
           </div>
         </DraggablePlayer>
       ) : (
-        <div className={cn('flex items-center text-muted-foreground', s.body, s.meta)}>
-          <PlayerAvatar player={{ name: '', photo: null, photoLookup: '' }} size={s.avatar} className="opacity-60" />
-          <span>{t.tactic.dropHere}</span>
-        </div>
+        <div className={cn('text-muted-foreground', s.body, s.meta)}>{t.tactic.dropHere}</div>
       )}
 
       {dropHint && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 truncate bg-amber-400 px-2 py-0.5 text-center text-[11px] font-semibold text-slate-950">
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 truncate bg-amber-400 px-[0.5em] py-[0.15em] text-center text-[0.85em] font-semibold text-slate-950">
           {dropHint}
         </div>
       )}
 
-      {backup && !compact && (
-        <div className={cn('flex items-center gap-1.5 border-t border-white/5 bg-black/20 px-2 py-0.5 text-slate-400', s.meta)} title={t.tactic.nextBackup}>
+      {/* Remplaçant du poste, dans toutes les vues */}
+      {backup && (
+        <div className={cn('flex items-center gap-[0.4em] border-t border-white/5 bg-black/20 px-[0.6em] py-[0.15em] text-slate-400', s.meta)}
+          title={`${backup.player.name} — ${t.tactic.nextBackup}`}>
           <span className="text-slate-600">↳</span>
           <span className="min-w-0 flex-1 truncate">{backup.player.name}</span>
           <span className={cn('font-semibold tabular-nums', backup.rating.rated ? scoreText(backup.rating.score) : 'text-slate-600')}>
@@ -907,9 +896,8 @@ function SlotCard({ phase, slot, roles, starterIds, big, rotated, compact, accep
     </div>
   )
 }
-/** Marquages du terrain, dans les proportions du terrain affiché (vertical ou horizontal en grande vue). */
-function PitchLines({ big, ratio }: { big: boolean; ratio: number }) {
-  if (big) return <LandscapeLines />
+/** Marquages du terrain vertical, dans les proportions du terrain affiché. */
+function PitchLines({ ratio }: { ratio: number }) {
   const w = ratio * 100
   const mid = w / 2
   return (
@@ -929,32 +917,6 @@ function PitchLines({ big, ratio }: { big: boolean; ratio: number }) {
         <circle cx={mid} cy="50" r="0.6" />
         <circle cx={mid} cy="12" r="0.5" />
         <circle cx={mid} cy="88" r="0.5" />
-      </g>
-    </svg>
-  )
-}
-
-/** Terrain horizontal aux proportions réelles (105 × 68 m), but de l'équipe à gauche. */
-function LandscapeLines() {
-  const w = LANDSCAPE_RATIO * 100
-  const mid = w / 2
-  return (
-    <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox={`0 0 ${w} 100`}>
-      <g fill="none" stroke="rgba(255,255,255,0.28)" strokeWidth="0.35">
-        <rect x="2" y="2" width={w - 4} height="96" />
-        <line x1={mid} y1="2" x2={mid} y2="98" />
-        <circle cx={mid} cy="50" r="13.5" />
-        <rect x="2" y="20.5" width="24" height="59" />
-        <rect x="2" y="36.5" width="8" height="27" />
-        <path d="M 26 39.1 A 13.5 13.5 0 0 1 26 60.9" />
-        <rect x={w - 26} y="20.5" width="24" height="59" />
-        <rect x={w - 10} y="36.5" width="8" height="27" />
-        <path d={`M ${w - 26} 39.1 A 13.5 13.5 0 0 0 ${w - 26} 60.9`} />
-      </g>
-      <g fill="rgba(255,255,255,0.32)">
-        <circle cx={mid} cy="50" r="0.7" />
-        <circle cx="18" cy="50" r="0.6" />
-        <circle cx={w - 18} cy="50" r="0.6" />
       </g>
     </svg>
   )

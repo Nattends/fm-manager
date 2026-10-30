@@ -1,5 +1,5 @@
 import { DEFAULT_ROLE_BY_POSITION } from './defaultRoles'
-import { cellCenter, laneCol, positionAt } from './pitch'
+import { cellCenter, positionAt } from './pitch'
 import type { Position } from './positions'
 
 export interface FormationSlot {
@@ -26,8 +26,8 @@ export function makeSlot(id: string, row: number, col: number, defaultRole?: str
   return { id, position, row, col, ...cellCenter(row, col), defaultRole: defaultRole ?? DEFAULT_ROLE_BY_POSITION[position] }
 }
 
-/** Poste d'une formation prédéfinie, la colonne étant donnée en couloir FM (0-4). */
-const s = (id: string, row: number, lane: number, defaultRole?: string) => makeSlot(id, row, laneCol(lane), defaultRole)
+/** Poste d'une formation prédéfinie (ligne, couloir FM 0-4). */
+const s = (id: string, row: number, lane: number, defaultRole?: string) => makeSlot(id, row, lane, defaultRole)
 
 const GK = s('gk', 5, 2)
 const BACK_FOUR = [s('dl', 4, 0), s('dcl', 4, 1), s('dcr', 4, 3), s('dr', 4, 4)]

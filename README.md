@@ -38,7 +38,7 @@ L'effectif s'importe **directement depuis une sauvegarde FM27** (fichier `.fm`),
 - Choix du rôle d'un poste avec la **note du joueur placé pour chaque rôle**, triés de la meilleure à la moins bonne.
 - Glisser-déposer des joueurs : un remplaçant déposé sur un titulaire le **remplace** (le titulaire sort du XI sans chambouler les autres postes), deux titulaires s'échangent, mise à l'écart ; doublures par poste.
 - **Comparaison au survol** : en glissant un joueur sur un poste occupé, une fiche compare le titulaire et l'arrivant (notes avec / sans ballon, note globale, attributs clés du poste, écart).
-- Cartes colorées par ligne : photo, note, familiarité au poste, rôle avec recherche, devoir, verrou, première doublure.
+- Cartes colorées par ligne (sans photo) : note, nom, âge, nationalité, familiarité au poste, rôle avec recherche, verrou, première doublure.
 - Résumé de l'équipe : note du XI, notes par ligne, âge moyen, joueurs hors poste, postes vides.
 - **Grande vue** plein écran avec terrain horizontal.
 

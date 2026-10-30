@@ -65,9 +65,10 @@ export function RolePicker({ roles, value, current, position, phase, player, onC
           onPointerDown={(e) => e.stopPropagation()}
           className={cn('flex min-w-0 items-center gap-1 rounded px-1 text-left text-slate-300 outline-none hover:bg-secondary focus-visible:ring-2 focus-visible:ring-ring/50', className)}>
           {/* note du joueur placé pour le rôle choisi, juste avant le nom du rôle */}
-          {player && <RatingBadge rating={rateRole(player, current, position)} size="sm" className="h-4 min-w-7 shrink-0 px-1 text-[10px]" />}
+          {/* tailles en em : suit le texte de la carte, qui grandit avec le terrain */}
+          {player && <RatingBadge rating={rateRole(player, current, position)} size="sm" className="h-[1.35em] min-w-[2.2em] shrink-0 px-[0.25em] text-[0.9em]" />}
           <span className="min-w-0 flex-1 truncate">{roleName(current)}</span>
-          <ChevronsUpDownIcon className="size-3 shrink-0 opacity-50" />
+          <ChevronsUpDownIcon className="size-[1em] shrink-0 opacity-50" />
         </button>
       </PopoverTrigger>
       <PopoverContent className={cn('p-0', player ? 'w-80' : 'w-72')} align="start">

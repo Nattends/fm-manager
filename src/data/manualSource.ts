@@ -1,8 +1,8 @@
 import Database from '@tauri-apps/plugin-sql'
 import { isAttributeKey } from '../domain/attributes'
 import { isRoleList } from '../domain/defaultRoles'
-import { normalizeTacticSlots, widenLegacyGrid } from '../domain/lineup'
-import { PITCH_COLS } from '../domain/pitch'
+import { narrowHalfSpaceGrid, normalizeTacticSlots } from '../domain/lineup'
+import { HALF_SPACE_GRID, PITCH_COLS } from '../domain/pitch'
 import type { Attributes, Club, NewPlayer, NewTactic, Player, RoleDefinition, Tactic, TacticSlot } from '../domain/types'
 import type { Backup, DataSource } from './dataSource'
 
@@ -47,13 +47,13 @@ interface TacticRow {
   slots: string
   excluded: string
   notes: string
-  /** Nombre de colonnes de la grille des slots enregistrés (5 avant les demi-espaces). */
+  /** Nombre de colonnes de la grille des slots enregistrés : 5 couloirs, ou 9 avec les demi-espaces. */
   grid: number
 }
 
-/** Slots enregistrés avec une grille à 5 couloirs : convertis en grille à 9 colonnes. */
+/** Slots enregistrés avec la grille à demi-espaces (9 colonnes) : ramenés sur les 5 couloirs. */
 function slotsOnGrid(slots: Partial<TacticSlot>[], grid: number): Partial<TacticSlot>[] {
-  return grid < PITCH_COLS ? widenLegacyGrid(slots) : slots
+  return grid === HALF_SPACE_GRID ? narrowHalfSpaceGrid(slots) : slots
 }
 
 let dbPromise: Promise<Database> | null = null
@@ -284,7 +284,7 @@ export class ManualSource implements DataSource {
   async exportAll(): Promise<Backup> {
     return {
       app: 'fm27-manager',
-      version: 3,
+      version: 4,
       exportedAt: new Date().toISOString(),
       clubs: await this.listClubs(),
       players: await this.listPlayers(),
@@ -294,7 +294,7 @@ export class ManualSource implements DataSource {
   }
 
   async importAll(backup: Backup): Promise<void> {
-    if (backup.app !== 'fm27-manager' || ![1, 2, 3].includes(backup.version)) {
+    if (backup.app !== 'fm27-manager' || ![1, 2, 3, 4].includes(backup.version)) {
       throw new Error(INVALID_BACKUP)
     }
     const d = await db()
@@ -320,8 +320,8 @@ export class ManualSource implements DataSource {
         ...t,
         id: undefined,
         clubId: clubOf(t.clubId),
-        // Sauvegardes version 1 et 2 : grille à 5 couloirs.
-        slots: normalizeTacticSlots(slotsOnGrid(t.slots, backup.version < 3 ? 5 : PITCH_COLS), t.formation).map((s) => ({
+        // Sauvegardes version 3 : grille à demi-espaces ; les autres : 5 couloirs.
+        slots: normalizeTacticSlots(slotsOnGrid(t.slots, backup.version === 3 ? HALF_SPACE_GRID : PITCH_COLS), t.formation).map((s) => ({
           ...s,
           lockedPlayerId: s.lockedPlayerId !== null ? (idMap.get(s.lockedPlayerId) ?? null) : null,
         })),

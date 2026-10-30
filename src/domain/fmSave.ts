@@ -43,6 +43,8 @@ export interface SavePlayer {
   contractEnd: GameDate | null
   /** Salaire hebdomadaire en livres sterling (unité interne de FM), 0 = inconnu. */
   wage: number
+  /** Valeur de transfert en livres sterling, null si inconnue. */
+  value: number | null
   onLoan: boolean
   hostClub: string
 }
@@ -104,6 +106,14 @@ export function wageEuros(gbp: number): number | null {
   return gbp > 0 ? Math.round((gbp * EUR_PER_GBP) / 100) * 100 : null
 }
 
+/**
+ * Valeur de transfert en euros (arrondie au millier), null si inconnue. C'est la valeur interne du jeu :
+ * le jeu affiche une fourchette autour d'elle, plus ou moins large selon la connaissance du joueur.
+ */
+export function valueEuros(gbp: number | null): number | null {
+  return gbp === null ? null : Math.round((gbp * EUR_PER_GBP) / 1000) * 1000
+}
+
 /** Valeur interne (1-100) → attribut affiché (1-20). */
 export function displayValue(raw: number): number {
   return Math.min(20, Math.max(1, Math.round(raw / 5)))
@@ -145,6 +155,7 @@ export interface SaveFields {
   attributes: Attributes
   contractEnd: string | null
   wage: number | null
+  value: number | null
   onLoan: boolean
   club: string
 }
@@ -174,6 +185,7 @@ export function saveFields(p: SavePlayer, today: GameDate): SaveFields {
     attributes,
     contractEnd: p.contractEnd ? isoDate(p.contractEnd) : null,
     wage: wageEuros(p.wage),
+    value: valueEuros(p.value),
     onLoan: p.onLoan,
     club: p.onLoan ? p.hostClub : '',
   }
@@ -186,8 +198,8 @@ export type SaveImportAction =
 export type SaveImportPlan = Pick<ImportPlan, 'missing'> & { actions: SaveImportAction[] }
 
 /**
- * Écritures à faire : les joueurs déjà connus sont mis à jour (âge, nationalité, postes, attributs, contrat, salaire),
- * en gardant ce que la sauvegarde ne donne pas (nom, étoiles, valeur, statut, notes, photo).
+ * Écritures à faire : les joueurs déjà connus sont mis à jour (âge, nationalité, postes, attributs, contrat, salaire, valeur),
+ * en gardant ce que la sauvegarde ne donne pas (nom, étoiles, statut, notes, photo).
  */
 export function planSaveImport(players: SavePlayer[], existing: Player[], club: Club, today: GameDate): SaveImportPlan {
   const taken = new Set<number>()
@@ -207,6 +219,7 @@ export function planSaveImport(players: SavePlayer[], existing: Player[], club: 
         attributes: { ...found.attributes, ...f.attributes },
         contractEnd: f.contractEnd ?? found.contractEnd,
         wage: f.wage ?? found.wage,
+        value: f.value ?? found.value,
         onLoan: f.onLoan,
         club: f.onLoan ? f.club : found.club,
       }
@@ -217,7 +230,6 @@ export function planSaveImport(players: SavePlayer[], existing: Player[], club: 
         clubId: club.id,
         caStars: 2.5,
         paStars: 3,
-        value: null,
         status: 'rotation',
         notes: '',
       }

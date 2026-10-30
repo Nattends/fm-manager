@@ -11,18 +11,20 @@ interface Fake {
   owner?: number
   /** Salaire hebdomadaire en livres. */
   wage?: number
+  /** Valeur de transfert en livres (absente = inconnue). */
+  value?: number
   /** Familiarités brutes, dans l'ordre GK, SW, DL, DC, DR, DM, ML, MC, MR, AML, AMC, AMR, ST, WBL, WBR. */
   positions: number[]
   finishing: number
 }
 
-/** Même format que `scouting_snapshot` (src-tauri/src/fm_save.rs). */
-function encode(clubs: [string, number][], players: Fake[]): Uint8Array {
+/** Même format que `scouting_snapshot` (src-tauri/src/fm_save.rs) ; `FMS2` = ancien format, sans la valeur. */
+function encode(clubs: [string, number][], players: Fake[], magic: 'FMS2' | 'FMS3' = 'FMS3'): Uint8Array {
   const out: number[] = []
   const u16 = (v: number) => out.push(v & 255, (v >> 8) & 255)
   const u32 = (v: number) => out.push(v & 255, (v >>> 8) & 255, (v >>> 16) & 255, (v >>> 24) & 255)
   const text16 = (s: string) => { const b = new TextEncoder().encode(s); u16(b.length); out.push(...b) }
-  out.push(...new TextEncoder().encode('FMS2'))
+  out.push(...new TextEncoder().encode(magic))
   for (let i = 0; i < 8; i++) out.push(0)
   text16('C:/save.fm')
   u16(228); u16(2026)
@@ -38,6 +40,7 @@ function encode(clubs: [string, number][], players: Fake[]): Uint8Array {
     u32(p.owner ?? 0xffffffff)
     u16(181); u16(2029)
     u32(p.wage ?? 0)
+    if (magic === 'FMS3') u32(p.value ?? 0xffffffff)
     const b = new TextEncoder().encode(p.name)
     out.push(b.length, ...b)
   }
@@ -46,15 +49,20 @@ function encode(clubs: [string, number][], players: Fake[]): Uint8Array {
 
 const ST = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 20, 1, 1]
 const DC = [1, 1, 1, 20, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
-const bytes = encode([['Real Sociedad', 170], ['Feyenoord', 158]], [
-  { name: 'Mikel Oyarzábal', birthYear: 1997, nation: 170, club: 0, positions: ST, finishing: 85, wage: 37043 },
-  { name: 'Orri Óskarsson', birthYear: 2004, nation: 148, club: 0, positions: ST, finishing: 70, wage: 42951 },
-  { name: 'Igor Zubeldia', birthYear: 1997, nation: 170, club: 0, positions: DC, finishing: 20 },
-  { name: 'Javi López', birthYear: 2002, nation: 170, club: 1, owner: 0, positions: DC, finishing: 25 },
-  { name: 'Agent Libre', birthYear: 1990, nation: 143, club: 0xffffffff, positions: ST, finishing: 60 },
-])
+const CLUBS: [string, number][] = [['Real Sociedad', 170], ['Feyenoord', 158]]
+const FAKES: Fake[] = [
+  { name: 'Mikel Oyarzábal', birthYear: 1997, nation: 170, club: 0, positions: ST, finishing: 85, wage: 37043, value: 64_427_392 },
+  { name: 'Orri Óskarsson', birthYear: 2004, nation: 148, club: 0, positions: ST, finishing: 70, wage: 42951, value: 71_604_775 },
+  { name: 'Igor Zubeldia', birthYear: 1997, nation: 170, club: 0, positions: DC, finishing: 20, value: 29_765_456 },
+  { name: 'Javi López', birthYear: 2002, nation: 170, club: 1, owner: 0, positions: DC, finishing: 25, wage: 26_640, value: 7_300_000 },
+  { name: 'Agent Libre', birthYear: 1990, nation: 143, club: 0xffffffff, positions: ST, finishing: 60, value: 0 },
+]
+const bytes = encode(CLUBS, FAKES)
 const finisher: RoleDefinition = { id: 'r', name: 'Finisseur', positions: ['ST'], weights: { finishing: 5 } }
-const base: ScoutFilters = { search: '', positions: [], role: null, roles: [], minAge: null, maxAge: null, nationality: null, club: '', clubNation: null, hideLoaned: false, sort: 'name', limit: 100 }
+const base: ScoutFilters = {
+  search: '', positions: [], role: null, roles: [], minAge: null, maxAge: null, minWage: null, maxWage: null, minValue: null, maxValue: null,
+  nationality: null, club: '', clubNation: null, hideLoaned: false, sort: 'name', limit: 100,
+}
 const stopper: RoleDefinition = { id: 's', name: 'Stoppeur', positions: ['DC'], weights: { finishing: 1, marking: 5 } }
 
 describe('base de scouting', () => {
@@ -114,6 +122,27 @@ describe('base de scouting', () => {
     expect(db.players[2].wage).toBeNull()
     const { rows } = searchScouts(db, { ...base, sort: 'wage' }, db.gameDate!)
     expect(rows.slice(0, 2).map((r) => r.player.name)).toEqual(['Orri Óskarsson', 'Mikel Oyarzábal'])
+  })
+
+  it('lit la valeur, filtre et trie par salaire et par valeur', () => {
+    const today = db.gameDate!
+    expect(db.players[0].value).toBe(75_000_000)
+    expect(db.players[4].value).toBe(0)
+    const names = (f: Partial<ScoutFilters>) => searchScouts(db, { ...base, ...f }, today).rows.map((r) => r.player.name)
+    expect(names({ sort: 'value' }).slice(0, 2)).toEqual(['Orri Óskarsson', 'Mikel Oyarzábal'])
+    expect(names({ minValue: 30e6, maxValue: 80e6 })).toEqual(['Igor Zubeldia', 'Mikel Oyarzábal'])
+    // l'agent libre (valeur 0) passe une borne maximale
+    expect(names({ maxValue: 10e6 })).toEqual(['Agent Libre', 'Javi López'])
+    // salaire inconnu (Zubeldia, l'agent libre) : écarté dès qu'une borne est donnée
+    expect(names({ maxWage: 45_000 })).toEqual(['Javi López', 'Mikel Oyarzábal'])
+    expect(names({ minWage: 45_000 })).toEqual(['Orri Óskarsson'])
+  })
+
+  it('lit encore les bases au format précédent (sans valeur)', () => {
+    const old = decodeScouting(encode(CLUBS, FAKES, 'FMS2'))!
+    expect(old.players).toHaveLength(5)
+    expect(old.players[3]).toMatchObject({ name: 'Javi López', value: null, wage: 31000 })
+    expect(old.players.every((p) => p.value === null)).toBe(true)
   })
 
   it('filtre plusieurs postes et masque les prêtés', () => {

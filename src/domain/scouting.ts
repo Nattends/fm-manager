@@ -1,6 +1,6 @@
 import type { AttributeKey } from './attributes'
 import {
-  ageAt, displayValue, FM_NATIONS, footFrom, SAVE_POSITIONS, SAVE_VALUES, saveFields, todayGameDate, wageEuros, type GameDate,
+  ageAt, displayValue, FM_NATIONS, footFrom, SAVE_POSITIONS, SAVE_VALUES, saveFields, todayGameDate, valueEuros, wageEuros, type GameDate,
 } from './fmSave'
 import { normalizeText } from './photoMatch'
 import type { Position } from './positions'
@@ -33,6 +33,8 @@ export interface ScoutPlayer {
   contractEnd: GameDate | null
   /** Salaire hebdomadaire en euros, null si inconnu. */
   wage: number | null
+  /** Valeur de transfert en euros, null si inconnue (ou base lue avant la v0.15). */
+  value: number | null
 }
 
 export interface ScoutDb {
@@ -43,12 +45,15 @@ export interface ScoutDb {
   players: ScoutPlayer[]
 }
 
-const MAGIC = 'FMS2'
+/** FMS3 ajoute la valeur de transfert après le salaire ; FMS2 (bases plus anciennes) n'en a pas. */
+const MAGICS = ['FMS2', 'FMS3']
 const NONE = 0xffffffff
 
 /** Décode la base enregistrée ; null si elle est vide ou d'un autre format. */
 export function decodeScouting(bytes: Uint8Array): ScoutDb | null {
-  if (bytes.length < 8 || String.fromCharCode(...bytes.subarray(0, 4)) !== MAGIC) return null
+  const magic = bytes.length >= 8 ? String.fromCharCode(...bytes.subarray(0, 4)) : ''
+  if (!MAGICS.includes(magic)) return null
+  const withValue = magic === 'FMS3'
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   const utf8 = new TextDecoder()
   let p = 4
@@ -77,10 +82,12 @@ export function decodeScouting(bytes: Uint8Array): ScoutDb | null {
     const owner = u32()
     const contractEnd = date()
     const wage = wageEuros(u32())
+    const rawValue = withValue ? u32() : NONE
     const name = text(bytes[p++])
     players.push({
       index: i, name, birth, nationality, positions, values,
       club: club === NONE ? -1 : club, owner: owner === NONE ? -1 : owner, contractEnd, wage,
+      value: valueEuros(rawValue === NONE ? null : rawValue),
     })
   }
   return { refreshedAt, savePath, gameDate, clubs, players }
@@ -114,7 +121,7 @@ export function rateScout(p: ScoutPlayer, role: RoleDefinition, position?: Posit
 export function scoutAsPlayer(p: ScoutPlayer, db: ScoutDb, today: GameDate): Player {
   const f = saveFields({
     name: p.name, firstName: '', lastName: '', birth: p.birth, nation: -1, positions: p.positions, values: p.values,
-    contractEnd: p.contractEnd, wage: 0, onLoan: false, hostClub: '',
+    contractEnd: p.contractEnd, wage: 0, value: null, onLoan: false, hostClub: '',
   }, today)
   return {
     ...f,
@@ -126,7 +133,7 @@ export function scoutAsPlayer(p: ScoutPlayer, db: ScoutDb, today: GameDate): Pla
     caStars: 0,
     paStars: 0,
     wage: p.wage,
-    value: null,
+    value: p.value,
     status: 'rotation',
     notes: '',
     photo: null,
@@ -143,7 +150,7 @@ export function scoutToday(db: ScoutDb): GameDate {
   return db.gameDate ?? todayGameDate()
 }
 
-export type ScoutSort = 'rating' | 'age' | 'name' | 'wage'
+export type ScoutSort = 'rating' | 'age' | 'name' | 'wage' | 'value'
 
 export interface ScoutFilters {
   search: string
@@ -155,6 +162,12 @@ export interface ScoutFilters {
   roles: RoleDefinition[]
   minAge: number | null
   maxAge: number | null
+  /** Salaire hebdomadaire en euros (bornes incluses), null = pas de borne. Un salaire inconnu ne passe pas une borne. */
+  minWage: number | null
+  maxWage: number | null
+  /** Valeur de transfert en euros (bornes incluses), null = pas de borne. Une valeur inconnue ne passe pas une borne. */
+  minValue: number | null
+  maxValue: number | null
   /** Code de nationalité, null = toutes. */
   nationality: string | null
   /** Texte recherché dans le nom du club (« libre » pour les joueurs sans club). */
@@ -253,6 +266,12 @@ function bestAll(db: ScoutDb, roles: RoleDefinition[], compiled: CompiledRole[])
   return entry
 }
 
+/** Montant entre deux bornes facultatives ; un montant inconnu ne passe que s'il n'y a aucune borne. */
+function inRange(v: number | null, min: number | null, max: number | null): boolean {
+  if (min === null && max === null) return true
+  return v !== null && (min === null || v >= min) && (max === null || v <= max)
+}
+
 /** Joueurs qui passent les filtres, classés, au plus `limit` ; `total` compte tous ceux qui passent. */
 export function searchScouts(db: ScoutDb, f: ScoutFilters, today: GameDate, freeLabel = ''): { rows: ScoutRow[]; total: number } {
   const q = normalizeText(f.search)
@@ -285,6 +304,7 @@ export function searchScouts(db: ScoutDb, f: ScoutFilters, today: GameDate, free
     const age = ages[p.index]
     if (f.minAge !== null && age < f.minAge) continue
     if (f.maxAge !== null && age > f.maxAge) continue
+    if (!inRange(p.wage, f.minWage, f.maxWage) || !inRange(p.value, f.minValue, f.maxValue)) continue
     if (q && !names?.[p.index].includes(q)) continue
     if (chosen) found.push({ player: p, age, score: fastScore(p, chosen), role: chosen.role })
     else if (cache) {
@@ -299,6 +319,7 @@ export function searchScouts(db: ScoutDb, f: ScoutFilters, today: GameDate, free
   if (f.sort === 'rating') found.sort((a, b) => b.score - a.score || byName(a, b))
   else if (f.sort === 'age') found.sort((a, b) => a.age - b.age || byName(a, b))
   else if (f.sort === 'wage') found.sort((a, b) => (b.player.wage ?? -1) - (a.player.wage ?? -1) || byName(a, b))
+  else if (f.sort === 'value') found.sort((a, b) => (b.player.value ?? -1) - (a.player.value ?? -1) || byName(a, b))
   else found.sort(byName)
   // note détaillée (badge) seulement pour les lignes affichées
   const rows = found.slice(0, f.limit).map(({ player, age, role }): ScoutRow => ({

@@ -48,17 +48,17 @@ export interface Club {
   name: string
 }
 
-export type Duty = 'defend' | 'support' | 'attack' | 'auto'
-
 /** Phase de jeu : avec ballon (in possession) ou sans ballon (out of possession). */
 export type Phase = 'ip' | 'oop'
 
-/** Place et rôle d'un poste dans une phase de jeu. */
+/**
+ * Place et rôle d'un poste dans une phase de jeu. FM26/27 n'a plus de devoir (défense, soutien, attaque) :
+ * le `duty` des tactiques enregistrées avant est ignoré à la lecture.
+ */
 export interface SlotShape {
   row: number
   col: number
   roleId: string
-  duty: Duty
 }
 
 export interface RoleDefinition {
@@ -73,7 +73,7 @@ export interface RoleDefinition {
 }
 
 /**
- * Un poste de la tactique. row / col / roleId / duty décrivent la phase avec ballon ;
+ * Un poste de la tactique. row / col / roleId décrivent la phase avec ballon ;
  * `oop` décrit le même joueur sans ballon (autre case, autre rôle possible).
  */
 export interface TacticSlot extends SlotShape {

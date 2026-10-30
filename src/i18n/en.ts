@@ -1,6 +1,6 @@
 import type { AttributeGroup, AttributeKey } from '../domain/attributes'
 import type { FamiliarityLevel, Position } from '../domain/positions'
-import type { Duty, Foot, PlayerStatus } from '../domain/types'
+import type { Foot, PlayerStatus } from '../domain/types'
 import type { LogoStyle } from '../lib/logoStyle'
 
 export const en = {
@@ -36,8 +36,6 @@ export const en = {
     unavailable: 'Unavailable',
   } satisfies Record<PlayerStatus, string>,
   foot: { right: 'Right', left: 'Left', both: 'Either' } satisfies Record<Foot, string>,
-  duty: { auto: '—', defend: 'Defend', support: 'Support', attack: 'Attack' } satisfies Record<Duty, string>,
-  dutyShort: { auto: '—', defend: 'De', support: 'Su', attack: 'At' } satisfies Record<Duty, string>,
   familiarity: {
     20: 'Natural', 17: 'Accomplished', 14: 'Competent', 10: 'Unconvincing', 7: 'Awkward', 3: 'Ineffectual',
   } satisfies Record<FamiliarityLevel, string>,
@@ -193,8 +191,6 @@ export const en = {
     bothPhases: 'Both',
     bothPhasesTitle: 'Show the with-ball and without-ball shapes side by side',
     formationBothTitle: 'Formation with the ball (drag the cards on either pitch)',
-    halfSpace: 'Half-space',
-    halfSpaceShort: 'HS',
     phaseTitle: 'Each position has a place and a role with the ball and without it. The best XI uses the average of both ratings.',
     copyFromIp: 'Copy “with ball”',
     copyFromIpTitle: 'Use the same places and roles without the ball as with it',
@@ -222,7 +218,6 @@ export const en = {
     dragCard: 'Drag to move this position on the pitch',
     lock: 'Lock this player here',
     unlock: 'Unlock (automatic choice)',
-    duty: 'Duty',
     summary: 'Team summary',
     avgAge: 'Average age',
     lines: { defence: 'Defence', midfield: 'Midfield', attack: 'Attack' },
@@ -239,7 +234,7 @@ export const en = {
     name: 'Tactic name',
     bigView: 'Big view',
     exitBigView: 'Exit',
-    bigViewTitle: 'Full-window horizontal pitch with bigger cards',
+    bigViewTitle: 'Full-window pitch with bigger cards',
     exitBigViewTitle: 'Back to the normal view (Esc)',
     showSquad: 'Squad ▸',
     hideSquad: 'Hide squad',
@@ -392,7 +387,16 @@ export const en = {
     minAge: 'Age min',
     maxAge: 'Age max',
     sortBy: 'Sort',
-    sort: { rating: 'Rating', wage: 'Wage', age: 'Age', name: 'Name' },
+    sort: { rating: 'Rating', value: 'Value', wage: 'Wage', age: 'Age', name: 'Name' },
+    value: 'Value',
+    valueTitle: 'Transfer value from the save. The game shows a range around it, wider when the player is less known.',
+    wageRange: 'Wage',
+    wageRangeTitle: 'Weekly wage, in thousands of euros (e.g. 20 – 60)',
+    valueRange: 'Value',
+    valueRangeTitle: 'Transfer value, in millions of euros (e.g. 5 – 25)',
+    min: 'min',
+    max: 'max',
+    noValues: 'Refresh the database (Settings) to read transfer values.',
     perWeek: (amount: string) => `€${amount} p/w`,
     rating: 'Rating',
     loanFrom: (club: string) => `on loan from ${club}`,

@@ -9,6 +9,8 @@ const ZSTD_MAGIC: [u8; 4] = [0x28, 0xb5, 0x2f, 0xfd];
 /// Date vide de FM : jour 1 de 1900 (`01 00 6C 07`).
 const EMPTY_DATE: [u8; 4] = [1, 0, 0x6c, 0x07];
 const NONE: u32 = 0xffff_ffff;
+/// Valeur de 300 M£ : plafond donné à des milliers de joueurs sans valeur calculée (vétérans de petits championnats…).
+const VALUE_PLACEHOLDER: u32 = 300_000_000;
 
 #[derive(Serialize, Clone, Copy, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -55,6 +57,8 @@ pub struct SavePlayer {
   pub contract_end: Option<GameDate>,
   /// Salaire hebdomadaire en livres sterling (unité interne de FM), 0 si inconnu.
   pub wage: u32,
+  /// Valeur de transfert en livres sterling, None si inconnue.
+  pub value: Option<u32>,
   /// Prêté par ce club à un autre (club d'accueil dans `host_club`).
   pub on_loan: bool,
   pub host_club: String,
@@ -71,6 +75,8 @@ struct RawPlayer {
   nation: u32,
   positions: Vec<u8>,
   values: Vec<u8>,
+  /// Valeur de transfert en livres (u32 juste après les 54 valeurs), None si inconnue.
+  value: Option<u32>,
   team: u32,
   /// Équipes des contrats, dans l'ordre (le premier est avec le club propriétaire).
   contracts: Vec<Contract>,
@@ -193,7 +199,8 @@ fn name_tables(d: &[u8]) -> Vec<Vec<String>> {
   tables
 }
 
-/// Bloc joueur : 15 octets de postes (1-20), 54 valeurs (1-100), puis 4 + 1 octets, une date et une date vide.
+/// Bloc joueur : 15 octets de postes (1-20), 54 valeurs (1-100), puis la valeur de transfert (u32, £) + 1 octet,
+/// une date et une date vide.
 fn is_block(d: &[u8], p: usize) -> bool {
   if p + 82 > d.len() || d[p + 81] != 0x07 || d[p + 78..p + 82] != EMPTY_DATE {
     return false;
@@ -263,6 +270,7 @@ fn parse_players(d: &[u8], names: &[Vec<String>]) -> Vec<RawPlayer> {
         nation: u32::from(d[m + 5]),
         positions: d[p..p + 15].to_vec(),
         values: d[p + 15..p + 69].to_vec(),
+        value: Some(u32_at(d, p + 69)).filter(|&v| v != NONE && v != VALUE_PLACEHOLDER),
         team: u32_at(d, p - 8),
         contracts: Vec::new(),
       });
@@ -445,6 +453,7 @@ impl ParsedSave {
         values: p.values.clone(),
         contract_end: contract.and_then(|c| c.end),
         wage: contract.map_or(0, |c| c.wage),
+        value: p.value,
         on_loan: loaned_out,
         host_club: if loaned_out { host_name(p.team) } else { String::new() },
       });
@@ -454,9 +463,10 @@ impl ParsedSave {
 
   /// Base de scouting : tous les joueurs, en binaire compact (décodé par src/domain/scouting.ts).
   ///
-  /// `FMS2`, horodatage u64 (ms), chemin [u16 + texte], date du jeu (jour u16, année u16, 0 si inconnue),
+  /// `FMS3`, horodatage u64 (ms), chemin [u16 + texte], date du jeu (jour u16, année u16, 0 si inconnue),
   /// clubs [u32 n] × (nation u16, nom [u16 + texte]), joueurs [u32 n] × (15 postes, 54 valeurs, naissance jour/année u16,
-  /// nation u16, club u32, club propriétaire u32 (FFFFFFFF si aucun), fin de contrat jour/année u16, salaire hebdomadaire u32 (£), nom [u8 + texte]).
+  /// nation u16, club u32, club propriétaire u32 (FFFFFFFF si aucun), fin de contrat jour/année u16, salaire hebdomadaire u32 (£),
+  /// valeur u32 (£, FFFFFFFF si inconnue), nom [u8 + texte]). `FMS2` : le même sans la valeur.
   pub fn scouting_snapshot(&self, path: &str, refreshed_at: u64) -> Vec<u8> {
     fn text16(out: &mut Vec<u8>, s: &str) {
       let b = &s.as_bytes()[..s.len().min(u16::MAX as usize)];
@@ -465,7 +475,7 @@ impl ParsedSave {
     }
     let owner = self.team_owner();
     let mut out = Vec::with_capacity(self.players.len() * 110 + self.clubs.len() * 24);
-    out.extend_from_slice(b"FMS2");
+    out.extend_from_slice(b"FMS3");
     out.extend_from_slice(&refreshed_at.to_le_bytes());
     text16(&mut out, path);
     let date = self.game_date.unwrap_or(GameDate { day: 0, year: 0 });
@@ -494,7 +504,8 @@ impl ParsedSave {
       out.extend_from_slice(&end.day.to_le_bytes());
       out.extend_from_slice(&end.year.to_le_bytes());
       out.extend_from_slice(&contract.map_or(0, |c| c.wage).to_le_bytes());
-      let name = &p.name.as_bytes()[..p.name.len().min(255)];
+      out.extend_from_slice(&p.value.unwrap_or(NONE).to_le_bytes());
+      let name =&p.name.as_bytes()[..p.name.len().min(255)];
       out.push(name.len() as u8);
       out.extend_from_slice(name);
     }
@@ -574,7 +585,7 @@ mod tests {
       std::fs::write(out, save.scouting_snapshot(&path, 0)).unwrap();
     }
     for p in &players {
-      println!("{} né {:?} nation {} fin {:?} salaire {} £ prêt {} {}", p.name, p.birth, p.nation, p.contract_end, p.wage, p.on_loan, p.host_club);
+      println!("{} né {:?} nation {} fin {:?} salaire {} £ valeur {:?} £ prêt {} {}", p.name, p.birth, p.nation, p.contract_end, p.wage, p.value, p.on_loan, p.host_club);
     }
   }
 

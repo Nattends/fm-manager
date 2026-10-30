@@ -3,8 +3,11 @@ import type { Club, NewPlayer, NewTactic, Player, RoleDefinition, Tactic } from 
 /** Contenu complet d'une sauvegarde (export / import JSON). */
 export interface Backup {
   app: 'fm27-manager'
-  /** 1 : un seul club (avant la v0.2), 2 : plusieurs clubs, 3 : grille avec demi-espaces (9 colonnes). */
-  version: 1 | 2 | 3
+  /**
+   * 1 : un seul club (avant la v0.2), 2 : plusieurs clubs, 3 : grille avec demi-espaces (9 colonnes),
+   * 4 : retour aux 5 couloirs de FM (même grille que les versions 1 et 2).
+   */
+  version: 1 | 2 | 3 | 4
   exportedAt: string
   /** Absent des sauvegardes version 1. */
   clubs?: Club[]
