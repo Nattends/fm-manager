@@ -1,4 +1,4 @@
-import type { AttributeKey } from './attributes'
+import { ALL_ATTRIBUTES, attributesOf, type AttributeKey } from './attributes'
 import type { Position } from './positions'
 import type { Player, RoleDefinition } from './types'
 
@@ -110,9 +110,38 @@ export function roleWeights(role: RoleDefinition): readonly (readonly [Attribute
 
 const weightsCache = new WeakMap<RoleDefinition['weights'], readonly (readonly [AttributeKey, number])[]>()
 
+/** Poids minimal de chaque attribut dans le calcul des notes, même s'il ne fait pas partie du rôle. */
+export const MIN_ATTRIBUTE_WEIGHT = 0.5
+
 /**
- * Note d'un joueur pour un rôle : moyenne pondérée de ses attributs (seuls les
- * attributs renseignés comptent), passée dans la courbe de notation, puis multipliée
+ * Poids utilisés pour noter : ceux du rôle, et au moins `MIN_ATTRIBUTE_WEIGHT` pour tous les autres attributs.
+ * Les attributs de gardien ne s'ajoutent qu'aux rôles de gardien.
+ */
+export function ratingWeights(role: RoleDefinition): readonly (readonly [AttributeKey, number])[] {
+  let list = ratingCache.get(role)
+  if (list?.weights !== role.weights || list.positions !== role.positions) {
+    const goalkeeper = role.positions.includes('GK')
+    const keys = goalkeeper ? ALL_ATTRIBUTES : ALL_ATTRIBUTES.filter((a) => !GOALKEEPING.has(a))
+    const own = new Map(roleWeights(role))
+    const weights = keys.map((a) => [a, Math.max(own.get(a) ?? 0, MIN_ATTRIBUTE_WEIGHT)] as const)
+    // un attribut de gardien mis explicitement dans un rôle de champ reste compté
+    for (const [a, w] of own) if (!keys.includes(a)) weights.push([a, w])
+    list = { weights: role.weights, positions: role.positions, list: weights.sort((a, b) => b[1] - a[1]) }
+    ratingCache.set(role, list)
+  }
+  return list.list
+}
+
+const GOALKEEPING = new Set<AttributeKey>(attributesOf('goalkeeping'))
+const ratingCache = new WeakMap<RoleDefinition, {
+  weights: RoleDefinition['weights']
+  positions: RoleDefinition['positions']
+  list: readonly (readonly [AttributeKey, number])[]
+}>()
+
+/**
+ * Note d'un joueur pour un rôle : moyenne pondérée de ses attributs (poids du rôle, et au moins 0,5 pour les autres ;
+ * seuls les attributs renseignés comptent), passée dans la courbe de notation, puis multipliée
  * par le facteur de familiarité au poste. Le niveau en étoiles n'intervient pas.
  */
 export function rateRole(player: Player, role: RoleDefinition, position?: Position): RoleRating {
@@ -121,20 +150,24 @@ export function rateRole(player: Player, role: RoleDefinition, position?: Positi
 
 /** Note pour un rôle à partir d'un accès aux attributs (1-20) et de la familiarité au poste. */
 export function rateWith(attributeOf: (attr: AttributeKey) => number | undefined, familiarity: number | undefined, role: RoleDefinition): RoleRating {
-  let totalWeight = 0
   let presentWeight = 0
   let weightedSum = 0
-  for (const [attr, weight] of roleWeights(role)) {
-    totalWeight += weight
+  // part renseignée : mesurée sur les attributs du rôle seulement (le minimum de 0,5 ne rend pas une note « partielle »)
+  let roleTotal = 0
+  let rolePresent = 0
+  for (const [attr, weight] of ratingWeights(role)) {
+    const own = role.weights[attr] ?? 0
+    roleTotal += own
     const v = attributeOf(attr)
     if (v !== undefined) {
       presentWeight += weight
       weightedSum += v * weight
+      rolePresent += own
     }
   }
 
   const factor = familiarityFactor(familiarity)
-  const coverage = totalWeight > 0 ? presentWeight / totalWeight : 0
+  const coverage = roleTotal > 0 ? rolePresent / roleTotal : presentWeight > 0 ? 1 : 0
   if (presentWeight === 0) {
     return { score: 0, average: 0, base: 0, familiarityFactor: factor, coverage: 0, rated: false, estimated: false }
   }

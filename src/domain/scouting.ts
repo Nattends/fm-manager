@@ -4,7 +4,7 @@ import {
 } from './fmSave'
 import { normalizeText } from './photoMatch'
 import type { Position } from './positions'
-import { familiarityFactor, rateWith, roleWeights, scoreFromAverage, type RoleRating } from './rating'
+import { familiarityFactor, ratingWeights, rateWith, scoreFromAverage, type RoleRating } from './rating'
 import type { Foot, Player, RoleDefinition } from './types'
 
 /**
@@ -203,7 +203,7 @@ interface CompiledRole {
 }
 
 function compileRole(role: RoleDefinition): CompiledRole {
-  const list = roleWeights(role)
+  const list = ratingWeights(role)
   return {
     role,
     values: list.map(([a]) => VALUE_INDEX[a]),

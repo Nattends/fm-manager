@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ALL_ATTRIBUTES, isAttributeKey, type AttributeKey } from './attributes'
+import { ALL_ATTRIBUTES, attributesOf, isAttributeKey, type AttributeKey } from './attributes'
 import { DEFAULT_ROLES, DEFAULT_ROLE_BY_POSITION, isRoleList } from './defaultRoles'
 import { FORMATIONS, getFormation } from './formations'
 import { hungarianMax } from './hungarian'
@@ -9,8 +9,8 @@ import {
 } from './lineup'
 import { PITCH_COLS, PITCH_ROWS, formationName, positionAt } from './pitch'
 import { POSITIONS, isPosition, type Position } from './positions'
-import { allRoleRatings, familiarityFactor, nextWeight, rateRole, scoreFromAverage } from './rating'
-import type { Attributes, Player } from './types'
+import { allRoleRatings, familiarityFactor, MIN_ATTRIBUTE_WEIGHT, nextWeight, rateRole, scoreFromAverage } from './rating'
+import type { Attributes, Player, RoleDefinition } from './types'
 
 let nextId = 1
 function player(name: string, positions: Partial<Record<Position, number>>, attributes: Attributes = {}, caStars = 3): Player {
@@ -63,32 +63,47 @@ describe('poids du notebook « position score calculator »', () => {
   const attrs = Object.fromEntries(ALL_ATTRIBUTES.map((a, i) => [a, 4 + ((i * 7) % 17)])) as Record<AttributeKey, number>
   const p = player('N', { GK: 20, DL: 20, DC: 20, DM: 20, MC: 20, ML: 20, AMC: 20, ST: 20 }, attrs)
   const avg = (...keys: AttributeKey[]) => keys.reduce((s, k) => s + attrs[k], 0) / keys.length
+  // moyenne avec les seuls poids du rôle : vérifie que les poids reproduisent les formules du notebook
+  const weighted = (r: RoleDefinition) => {
+    const entries = Object.entries(r.weights) as [AttributeKey, number][]
+    return entries.reduce((s, [k, w]) => s + attrs[k] * w, 0) / entries.reduce((s, [, w]) => s + w, 0)
+  }
+
+  it('la note compte aussi tous les autres attributs à 0,5 (ceux de gardien seulement pour les gardiens)', () => {
+    for (const r of [role('fb'), role('gk')]) {
+      const gk = r.positions.includes('GK')
+      const keys = ALL_ATTRIBUTES.filter((a) => gk || !attributesOf('goalkeeping').includes(a) || r.weights[a])
+      const w = (a: AttributeKey) => Math.max(r.weights[a] ?? 0, MIN_ATTRIBUTE_WEIGHT)
+      const expected = keys.reduce((s, a) => s + attrs[a] * w(a), 0) / keys.reduce((s, a) => s + w(a), 0)
+      expect(rateRole(p, r).average).toBeCloseTo(expected, 1)
+    }
+  })
 
   it('latéral : (essentiels×5 + principaux×3 + secondaires×1) / 46', () => {
     const essential = attrs.workRate + attrs.acceleration + attrs.pace + attrs.stamina
     const core = attrs.crossing + attrs.dribbling + attrs.marking + attrs.offTheBall + attrs.tackling + attrs.teamwork
     const secondary = attrs.agility + attrs.anticipation + attrs.concentration + attrs.decisions + attrs.firstTouch
       + attrs.passing + attrs.positioning + attrs.technique
-    expect(rateRole(p, role('fb')).average).toBeCloseTo((essential * 5 + core * 3 + secondary) / 46, 1)
+    expect(weighted(role('fb'))).toBeCloseTo((essential * 5 + core * 3 + secondary) / 46, 1)
   })
 
   it('défenseur central : 0,75 × moyenne(principaux) + 0,25 × moyenne(secondaires)', () => {
     const core = avg('composure', 'heading', 'jumpingReach', 'marking', 'passing', 'positioning', 'strength', 'tackling', 'pace')
     const secondary = avg('aggression', 'anticipation', 'bravery', 'concentration', 'decisions', 'firstTouch', 'technique', 'vision')
-    expect(rateRole(p, role('cb')).average).toBeCloseTo(core * 0.75 + secondary * 0.25, 1)
+    expect(weighted(role('cb'))).toBeCloseTo(core * 0.75 + secondary * 0.25, 1)
   })
 
   it('attaquant : 0,5 × moyenne(principaux) + 0,5 × moyenne(secondaires)', () => {
     const core = avg('composure', 'finishing', 'offTheBall', 'pace')
     const secondary = avg('acceleration', 'agility', 'anticipation', 'balance', 'decisions', 'dribbling', 'firstTouch',
       'passing', 'stamina', 'technique', 'workRate')
-    expect(rateRole(p, role('str')).average).toBeCloseTo(core * 0.5 + secondary * 0.5, 1)
+    expect(weighted(role('str'))).toBeCloseTo(core * 0.5 + secondary * 0.5, 1)
   })
 
   it('ailier : 0,75 × moyenne(principaux) + 0,25 × moyenne(secondaires)', () => {
     const core = avg('acceleration', 'crossing', 'dribbling', 'offTheBall', 'pace', 'technique')
     const secondary = avg('agility', 'firstTouch', 'passing', 'stamina', 'workRate')
-    expect(rateRole(p, role('w')).average).toBeCloseTo(core * 0.75 + secondary * 0.25, 1)
+    expect(weighted(role('w'))).toBeCloseTo(core * 0.75 + secondary * 0.25, 1)
   })
 
   it('gardien : (essentiels×5 + principaux×3 + secondaires×1) / 37', () => {
@@ -96,7 +111,7 @@ describe('poids du notebook « position score calculator »', () => {
     const core = attrs.oneOnOnes + attrs.anticipation + attrs.commandOfArea + attrs.concentration + attrs.kicking + attrs.positioning
     const secondary = attrs.acceleration + attrs.aerialReach + attrs.composure + attrs.decisions + attrs.firstTouch
       + attrs.handling + attrs.passing + attrs.throwing + attrs.vision
-    expect(rateRole(p, role('gk')).average).toBeCloseTo((essential * 5 + core * 3 + secondary) / 37, 1)
+    expect(weighted(role('gk'))).toBeCloseTo((essential * 5 + core * 3 + secondary) / 37, 1)
   })
 })
 
