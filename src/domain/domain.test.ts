@@ -9,7 +9,7 @@ import {
 } from './lineup'
 import { PITCH_COLS, PITCH_ROWS, formationName, positionAt } from './pitch'
 import { POSITIONS, isPosition, type Position } from './positions'
-import { allRoleRatings, familiarityFactor, MIN_ATTRIBUTE_WEIGHT, nextWeight, rateRole, scoreFromAverage } from './rating'
+import { allRoleRatings, familiarityFactor, nextWeight, OTHER_ATTRIBUTES_SHARE, rateRole, scoreFromAverage } from './rating'
 import type { Attributes, Player } from './types'
 
 let nextId = 1
@@ -65,12 +65,15 @@ describe('poids des rôles', () => {
   const attrs = Object.fromEntries(ALL_ATTRIBUTES.map((a, i) => [a, 4 + ((i * 7) % 17)])) as Record<AttributeKey, number>
   const p = player('N', { GK: 20, DL: 20, DC: 20, DM: 20, MC: 20, ML: 20, AMC: 20, ST: 20 }, attrs)
 
-  it('la note compte aussi tous les autres attributs à 0,5 (ceux de gardien seulement pour les gardiens)', () => {
+  it('les autres attributs comptent ensemble pour 15 % du poids (ceux de gardien seulement pour les gardiens)', () => {
     for (const r of [role('fm-full-back'), role('fm-goalkeeper'), role('fm-centre-forward')]) {
       const gk = r.positions.includes('GK')
       const keys = ALL_ATTRIBUTES.filter((a) => gk || !attributesOf('goalkeeping').includes(a) || r.weights[a])
-      const w = (a: AttributeKey) => Math.max(r.weights[a] ?? 0, MIN_ATTRIBUTE_WEIGHT)
-      const expected = keys.reduce((s, a) => s + attrs[a] * w(a), 0) / keys.reduce((s, a) => s + w(a), 0)
+      const inRole = keys.filter((a) => r.weights[a])
+      const others = keys.filter((a) => !r.weights[a])
+      const mean = (list: AttributeKey[], w: (a: AttributeKey) => number) =>
+        list.reduce((s, a) => s + attrs[a] * w(a), 0) / list.reduce((s, a) => s + w(a), 0)
+      const expected = (1 - OTHER_ATTRIBUTES_SHARE) * mean(inRole, (a) => r.weights[a]!) + OTHER_ATTRIBUTES_SHARE * mean(others, () => 1)
       expect(rateRole(p, r).average).toBeCloseTo(expected, 1)
     }
   })
@@ -94,14 +97,15 @@ describe('rateRole', () => {
     expect(r.estimated).toBe(true)
   })
 
-  it('courbe étalée : bon joueur ≈ 77, excellent ≈ 92', () => {
-    expect(scoreFromAverage(15)).toBe(75)
-    expect(scoreFromAverage(15.4)).toBeCloseTo(77.3, 1)
-    expect(scoreFromAverage(18)).toBe(92)
+  it('courbe calée sur la base : meilleur joueur du monde ≈ 97, top 1000 ≈ 74', () => {
+    expect(scoreFromAverage(17.8)).toBeCloseTo(97.4, 1)
+    expect(scoreFromAverage(13.8)).toBeCloseTo(74.2, 1)
+    expect(scoreFromAverage(15)).toBe(85)
+    expect(scoreFromAverage(16)).toBe(92)
     expect(scoreFromAverage(20)).toBe(100)
-    // Entre 12 et 18, chaque point d'attribut moyen vaut nettement plus que 5 points de note.
-    expect(scoreFromAverage(16) - scoreFromAverage(15)).toBeGreaterThan(5)
-    expect(rateRole(player('E', { ST: 20 }, level(18)), role('str')).score).toBe(92)
+    // Entre 11,5 et 16, chaque point d'attribut moyen vaut nettement plus que 5 points de note.
+    expect(scoreFromAverage(14) - scoreFromAverage(13)).toBeGreaterThan(5)
+    expect(rateRole(player('E', { ST: 20 }, level(16)), role('str')).score).toBe(92)
   })
 
   it('pénalité de poste allégée pour les familiarités faibles', () => {
@@ -136,7 +140,7 @@ describe('écran Rôles et fiche joueur', () => {
     const striker = rows.find((r) => r.role.id === 'fm-centre-forward')!
     expect(striker.playsPosition).toBe(false)
     expect(striker.rating.familiarityFactor).toBe(0.5)
-    expect(striker.rating.base).toBe(75)
+    expect(striker.rating.base).toBe(85)
   })
 })
 

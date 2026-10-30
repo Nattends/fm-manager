@@ -23,15 +23,17 @@ export interface RoleRating {
 
 /**
  * Courbe moyenne d'attributs (1-20) → note sur 100, linéaire par morceaux.
- * La pente est maximale entre 12 et 18, là où se situent la plupart des joueurs,
- * pour bien séparer un bon joueur (≈ 15,3 → 77) d'un excellent (18 → 92).
+ * Calée sur une base FM27 complète (meilleure note de chaque joueur) : le meilleur joueur du monde (≈ 17,8) ≈ 97,
+ * top 10 (≈ 16) ≈ 92, top 100 (≈ 14,9) ≈ 84, top 1000 (≈ 13,8) ≈ 74, top 5000 (≈ 12,8) ≈ 65, top 20 000 (≈ 11,8) ≈ 53.
  */
 export const RATING_CURVE: [average: number, score: number][] = [
   [1, 0],
   [8, 20],
-  [12, 50],
-  [15, 75],
-  [18, 92],
+  [11.5, 50],
+  [13, 67],
+  [15, 85],
+  [16, 92],
+  [18, 98],
   [20, 100],
 ]
 
@@ -110,12 +112,15 @@ export function roleWeights(role: RoleDefinition): readonly (readonly [Attribute
 
 const weightsCache = new WeakMap<RoleDefinition['weights'], readonly (readonly [AttributeKey, number])[]>()
 
-/** Poids minimal de chaque attribut dans le calcul des notes, même s'il ne fait pas partie du rôle. */
-export const MIN_ATTRIBUTE_WEIGHT = 0.5
+/**
+ * Part du poids total donnée aux attributs hors rôle (répartie à égalité entre eux) : la même pour tous les rôles,
+ * qu'ils comptent peu ou beaucoup d'attributs.
+ */
+export const OTHER_ATTRIBUTES_SHARE = 0.15
 
 /**
- * Poids utilisés pour noter : ceux du rôle, et au moins `MIN_ATTRIBUTE_WEIGHT` pour tous les autres attributs.
- * Les attributs de gardien ne s'ajoutent qu'aux rôles de gardien.
+ * Poids utilisés pour noter : ceux du rôle, et pour tous les autres attributs un poids égal qui leur donne
+ * ensemble `OTHER_ATTRIBUTES_SHARE` du poids total. Les attributs de gardien ne s'ajoutent qu'aux rôles de gardien.
  */
 export function ratingWeights(role: RoleDefinition): readonly (readonly [AttributeKey, number])[] {
   let list = ratingCache.get(role)
@@ -123,7 +128,11 @@ export function ratingWeights(role: RoleDefinition): readonly (readonly [Attribu
     const goalkeeper = role.positions.includes('GK')
     const keys = goalkeeper ? ALL_ATTRIBUTES : ALL_ATTRIBUTES.filter((a) => !GOALKEEPING.has(a))
     const own = new Map(roleWeights(role))
-    const weights = keys.map((a) => [a, Math.max(own.get(a) ?? 0, MIN_ATTRIBUTE_WEIGHT)] as const)
+    const others = keys.filter((a) => !own.has(a))
+    const roleTotal = [...own.values()].reduce((s, w) => s + w, 0)
+    // rôle sans poids : simple moyenne de tous les attributs
+    const other = roleTotal > 0 ? (roleTotal * OTHER_ATTRIBUTES_SHARE) / (1 - OTHER_ATTRIBUTES_SHARE) / others.length : 1
+    const weights = keys.map((a) => [a, own.get(a) ?? other] as const)
     // un attribut de gardien mis explicitement dans un rôle de champ reste compté
     for (const [a, w] of own) if (!keys.includes(a)) weights.push([a, w])
     list = { weights: role.weights, positions: role.positions, list: weights.sort((a, b) => b[1] - a[1]) }
@@ -140,7 +149,7 @@ const ratingCache = new WeakMap<RoleDefinition, {
 }>()
 
 /**
- * Note d'un joueur pour un rôle : moyenne pondérée de ses attributs (poids du rôle, et au moins 0,5 pour les autres ;
+ * Note d'un joueur pour un rôle : moyenne pondérée de ses attributs (poids du rôle, et 15 % du poids total pour les autres ;
  * seuls les attributs renseignés comptent), passée dans la courbe de notation, puis multipliée
  * par le facteur de familiarité au poste. Le niveau en étoiles n'intervient pas.
  */
@@ -152,7 +161,7 @@ export function rateRole(player: Player, role: RoleDefinition, position?: Positi
 export function rateWith(attributeOf: (attr: AttributeKey) => number | undefined, familiarity: number | undefined, role: RoleDefinition): RoleRating {
   let presentWeight = 0
   let weightedSum = 0
-  // part renseignée : mesurée sur les attributs du rôle seulement (le minimum de 0,5 ne rend pas une note « partielle »)
+  // part renseignée : mesurée sur les attributs du rôle seulement (les attributs hors rôle ne rendent pas une note « partielle »)
   let roleTotal = 0
   let rolePresent = 0
   for (const [attr, weight] of ratingWeights(role)) {
