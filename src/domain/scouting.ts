@@ -163,7 +163,12 @@ export function scoutToday(db: ScoutDb): GameDate {
   return db.gameDate ?? todayGameDate()
 }
 
-export type ScoutSort = 'rating' | 'avgRating' | 'age' | 'name' | 'wage' | 'value'
+export type ScoutSort = 'rating' | 'avgRating' | 'age' | 'name' | 'club' | 'foot' | 'contract' | 'wage' | 'value'
+
+/** Sens d'un premier clic sur une colonne : meilleures valeurs d'abord ; alphabétique, plus jeunes et contrats les plus courts d'abord. */
+export function defaultDescending(sort: ScoutSort): boolean {
+  return !(sort === 'age' || sort === 'name' || sort === 'club' || sort === 'foot' || sort === 'contract')
+}
 
 export interface ScoutFilters {
   search: string
@@ -190,6 +195,8 @@ export interface ScoutFilters {
   /** Masque les joueurs prêtés par leur club. */
   hideLoaned: boolean
   sort: ScoutSort
+  /** Sens du tri ; absent ou null = sens par défaut de la colonne (voir `defaultDescending`). */
+  desc?: boolean | null
   limit: number
 }
 
@@ -328,15 +335,34 @@ export function searchScouts(db: ScoutDb, f: ScoutFilters, today: GameDate, free
       found.push({ player: p, age, score: b.score, role: b.role >= 0 ? roleSubset[b.role].role : null })
     }
   }
-  const byName = (a: { player: ScoutPlayer }, b: { player: ScoutPlayer }) => a.player.name.localeCompare(b.player.name)
-  if (f.sort === 'rating') found.sort((a, b) => b.score - a.score || byName(a, b))
-  else if (f.sort === 'age') found.sort((a, b) => a.age - b.age || byName(a, b))
-  else if (f.sort === 'wage') found.sort((a, b) => (b.player.wage ?? -1) - (a.player.wage ?? -1) || byName(a, b))
-  else if (f.sort === 'value') found.sort((a, b) => (b.player.value ?? -1) - (a.player.value ?? -1) || byName(a, b))
-  else if (f.sort === 'avgRating') {
-    found.sort((a, b) => (b.player.avgRating ?? -1) - (a.player.avgRating ?? -1) || b.player.ratedMatches - a.player.ratedMatches || byName(a, b))
+  type Found = (typeof found)[number]
+  const byName = (a: Found, b: Found) => a.player.name.localeCompare(b.player.name)
+  // valeur de tri de chaque colonne ; null = inconnue (toujours classée en dernier, quel que soit le sens)
+  const sortKey: Record<ScoutSort, (r: Found) => number | string | null> = {
+    rating: (r) => r.score,
+    avgRating: (r) => r.player.avgRating,
+    age: (r) => r.age,
+    name: (r) => r.player.name,
+    club: (r) => (r.player.club >= 0 ? clubName(db, r.player.club) : null),
+    foot: (r) => scoutFoot(r.player),
+    contract: (r) => (r.player.contractEnd ? r.player.contractEnd.year * 400 + r.player.contractEnd.day : null),
+    wage: (r) => r.player.wage,
+    value: (r) => r.player.value,
   }
-  else found.sort(byName)
+  const key = sortKey[f.sort]
+  const dir = (f.desc ?? defaultDescending(f.sort)) ? -1 : 1
+  found.sort((a, b) => {
+    const x = key(a)
+    const y = key(b)
+    if (x === null || y === null) {
+      if (x !== y) return x === null ? 1 : -1
+    } else if (x !== y) {
+      return (typeof x === 'string' ? x.localeCompare(String(y)) : x - Number(y)) * dir
+    }
+    // à égalité : le plus de matchs notés d'abord (note moyenne), puis le nom
+    if (f.sort === 'avgRating' && a.player.ratedMatches !== b.player.ratedMatches) return b.player.ratedMatches - a.player.ratedMatches
+    return byName(a, b)
+  })
   // note détaillée (badge) seulement pour les lignes affichées
   const rows = found.slice(0, f.limit).map(({ player, age, role }): ScoutRow => ({
     player, age, ratedRole: role, rating: role ? rateScout(player, role) : null,

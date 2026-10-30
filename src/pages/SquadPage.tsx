@@ -1,6 +1,6 @@
 import {
   createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, useReactTable,
-  type SortingState, type VisibilityState,
+  type ColumnOrderState, type SortingState, type VisibilityState,
 } from '@tanstack/react-table'
 import { ArrowDownIcon, ArrowUpIcon, Columns3Icon, HardDriveDownloadIcon, MonitorDownIcon, PlusIcon, SearchIcon, XIcon } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
@@ -15,15 +15,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { EmptyState, PageHeader } from '@/components/layout'
 import { PositionChip, StatusBadge } from '@/components/chips'
+import { ColumnDnd, ReorderableTh } from '@/components/ReorderableColumns'
 import { PlayerClub } from '@/components/ClubLogo'
 import { Nationality } from '@/components/Nationality'
 import { AvgRating, PlayerAvatar, RatingBadge, Stars } from '@/components/ui'
 import { attrColor } from '@/components/styles'
 import { ATTRIBUTE_GROUP_IDS, attributesOf, type AttributeGroup, type AttributeKey } from '@/domain/attributes'
+import { moveColumn } from '@/domain/columnLayout'
 import { nationalityLabel } from '@/domain/nationalities'
 import { POSITIONS, type Position } from '@/domain/positions'
 import { bestRole, type BestRole } from '@/domain/rating'
 import type { Player, PlayerStatus } from '@/domain/types'
+import { loadColumnOrder, saveColumnOrder } from '@/lib/columnPrefs'
 import { useI18n } from '@/i18n'
 import { useStore } from '@/store'
 import { FmImportDialog } from './FmImportDialog'
@@ -39,6 +42,7 @@ interface Row {
 /** Familiarité minimale pour considérer qu'un joueur « joue » à un poste (Compétent). */
 const PLAYS_AT = 14
 const VISIBILITY_KEY = 'squad.columns'
+const ORDER_KEY = 'squad.columnOrder'
 const VIEW_KEY = 'squad.view'
 type SquadView = 'all' | 'squad' | 'loaned'
 
@@ -57,14 +61,21 @@ const NUMERIC = new Set<string>(['age', 'avgRating', 'value', 'wage', ...ATTRIBU
 
 const col = createColumnHelper<Row>()
 
+/** Ordre par défaut des colonnes : nom, colonnes générales, puis les attributs par groupe. */
+const DEFAULT_ORDER: string[] = ['name', ...BASE_COLUMNS, ...ATTRIBUTE_GROUP_IDS.flatMap((g) => attributesOf(g))]
+
+function defaultVisibility(): VisibilityState {
+  const hidden: VisibilityState = { wage: false, nationality: false }
+  for (const g of ATTRIBUTE_GROUP_IDS) for (const a of attributesOf(g)) hidden[a] = false
+  return hidden
+}
+
 function loadVisibility(): VisibilityState {
   try {
     const raw = localStorage.getItem(VISIBILITY_KEY)
     if (raw) return JSON.parse(raw)
   } catch { /* stockage indisponible */ }
-  const hidden: VisibilityState = { wage: false, nationality: false }
-  for (const g of ATTRIBUTE_GROUP_IDS) for (const a of attributesOf(g)) hidden[a] = false
-  return hidden
+  return defaultVisibility()
 }
 
 export function SquadPage() {
@@ -76,6 +87,7 @@ export function SquadPage() {
   const [ageMax, setAgeMax] = useState('')
   const [sorting, setSorting] = useState<SortingState>([{ id: 'name', desc: false }])
   const [visibility, setVisibility] = useState<VisibilityState>(loadVisibility)
+  const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(() => loadColumnOrder(ORDER_KEY, DEFAULT_ORDER))
   const [creating, setCreating] = useState(false)
   const [importing, setImporting] = useState(false)
   const [importingSave, setImportingSave] = useState(false)
@@ -92,6 +104,7 @@ export function SquadPage() {
   useEffect(() => {
     try { localStorage.setItem(VISIBILITY_KEY, JSON.stringify(visibility)) } catch { /* ignoré */ }
   }, [visibility])
+  useEffect(() => saveColumnOrder(ORDER_KEY, columnOrder), [columnOrder])
 
   const filtered = search !== '' || position !== ALL || status !== ALL || ageMax !== ''
   const resetFilters = () => {
@@ -193,13 +206,18 @@ export function SquadPage() {
   const table = useReactTable({
     data: rows,
     columns,
-    state: { sorting, columnVisibility: visibility },
+    state: { sorting, columnVisibility: visibility, columnOrder },
     onSortingChange: setSorting,
     onColumnVisibilityChange: setVisibility,
+    onColumnOrderChange: setColumnOrder,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
   })
 
+  const resetColumns = () => {
+    setVisibility(defaultVisibility())
+    setColumnOrder([...DEFAULT_ORDER])
+  }
   const setGroup = (g: AttributeGroup, visible: boolean) =>
     table.setColumnVisibility((v) => ({ ...v, ...Object.fromEntries(attributesOf(g).map((a) => [a, visible])) }))
 
@@ -277,6 +295,8 @@ export function SquadPage() {
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
             ))}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={resetColumns}>{t.columns.reset}</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </PageHeader>
@@ -291,6 +311,8 @@ export function SquadPage() {
           <EmptyState message={t.squad.noMatch}
             action={<Button variant="outline" onClick={resetFilters}><XIcon />{t.squad.resetFilters}</Button>} />
         ) : (
+          <ColumnDnd onMove={(from, to) => setColumnOrder((o) => moveColumn(o, from, to))}
+            labelOf={(id) => String(table.getColumn(id)?.columnDef.header ?? id)}>
           <table className="w-full border-separate border-spacing-0 text-[13px]">
             <thead className="sticky top-0 z-10 bg-card">
               {table.getHeaderGroups().map((hg) => (
@@ -298,7 +320,7 @@ export function SquadPage() {
                   {hg.headers.map((h) => {
                     const sorted = h.column.getIsSorted()
                     return (
-                      <th key={h.id} onClick={h.column.getToggleSortingHandler()}
+                      <ReorderableTh key={h.id} columnId={h.column.id} onClick={h.column.getToggleSortingHandler()} title={t.columns.hint}
                         className={cn(
                           'h-9 border-b border-border px-3 text-[11px] font-semibold tracking-wide whitespace-nowrap text-muted-foreground uppercase',
                           NUMERIC.has(h.column.id) ? 'text-right' : 'text-left',
@@ -310,7 +332,7 @@ export function SquadPage() {
                           {sorted === 'asc' && <ArrowUpIcon className="size-3" />}
                           {sorted === 'desc' && <ArrowDownIcon className="size-3" />}
                         </span>
-                      </th>
+                      </ReorderableTh>
                     )
                   })}
                 </tr>
@@ -334,6 +356,7 @@ export function SquadPage() {
               ))}
             </tbody>
           </table>
+          </ColumnDnd>
         )}
       </div>
 

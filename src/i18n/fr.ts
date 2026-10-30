@@ -78,6 +78,10 @@ export const fr: Messages = {
     avgNone: 'Aucun match noté cette saison',
     matches: (n) => `${n} match${n > 1 ? 's' : ''}`,
   },
+  columns: {
+    hint: 'Clic : trier · Glisser : déplacer la colonne',
+    reset: 'Réinitialiser les colonnes',
+  },
   clubs: {
     title: 'Mes clubs',
     create: 'Nouveau club',
@@ -384,8 +388,6 @@ export const fr: Messages = {
     free: 'Libre',
     minAge: 'Âge min',
     maxAge: 'Âge max',
-    sortBy: 'Tri',
-    sort: { rating: 'Note', avgRating: 'Note moyenne', value: 'Valeur', wage: 'Salaire', age: 'Âge', name: 'Nom' },
     value: 'Valeur',
     valueTitle: 'Valeur de transfert lue dans la sauvegarde. Le jeu affiche une fourchette autour d’elle, plus large quand le joueur est peu connu.',
     wageRange: 'Salaire',

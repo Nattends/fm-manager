@@ -85,6 +85,10 @@ export const en = {
     avgNone: 'No rated match this season',
     matches: (n: number) => `${n} ${n > 1 ? 'matches' : 'match'}`,
   },
+  columns: {
+    hint: 'Click: sort · Drag: move the column',
+    reset: 'Reset columns',
+  },
   clubs: {
     title: 'My clubs',
     create: 'New club',
@@ -391,8 +395,6 @@ export const en = {
     free: 'Free agent',
     minAge: 'Age min',
     maxAge: 'Age max',
-    sortBy: 'Sort',
-    sort: { rating: 'Rating', avgRating: 'Avg rating', value: 'Value', wage: 'Wage', age: 'Age', name: 'Name' },
     value: 'Value',
     valueTitle: 'Transfer value from the save. The game shows a range around it, wider when the player is less known.',
     wageRange: 'Wage',

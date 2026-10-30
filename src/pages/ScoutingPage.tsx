@@ -1,32 +1,34 @@
 import { open } from '@tauri-apps/plugin-dialog'
-import { ArrowLeftRightIcon, ChevronsUpDownIcon, DatabaseIcon, Loader2Icon, SearchIcon } from 'lucide-react'
-import { useDeferredValue, useEffect, useMemo, useState } from 'react'
+import { ArrowDownIcon, ArrowLeftRightIcon, ArrowUpIcon, ChevronsUpDownIcon, Columns3Icon, DatabaseIcon, Loader2Icon, SearchIcon } from 'lucide-react'
+import { useDeferredValue, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
-  DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { EmptyState, PageHeader, SectionTitle } from '@/components/layout'
 import { LoanBadge, PositionChip } from '@/components/chips'
 import { Flag, NationalityPicker } from '@/components/Nationality'
 import { PositionPitch } from '@/components/PositionPitch'
+import { ColumnDnd, ReorderableTh } from '@/components/ReorderableColumns'
 import { RoleSelect } from '@/components/RoleSelect'
 import { AvgRating, RatingBadge } from '@/components/ui'
 import { attrColor } from '@/components/styles'
 import { loadScouting, refreshScouting } from '@/data/fmSave'
 import { ATTRIBUTE_GROUP_IDS, attributesOf, FIRST_SET_PIECE } from '@/domain/attributes'
+import { moveColumn } from '@/domain/columnLayout'
 import { isoDate, SAVE_POSITIONS, type GameDate } from '@/domain/fmSave'
 import { POSITIONS, type Position } from '@/domain/positions'
 import { rolesForPlayer } from '@/domain/rating'
 import {
-  clubName, SCOUT_PLAYS_AT, scoutAsPlayer, scoutFoot, scoutToday, searchScouts,
-  type ScoutDb, type ScoutPlayer, type ScoutSort,
+  clubName, defaultDescending, SCOUT_PLAYS_AT, scoutAsPlayer, scoutFoot, scoutToday, searchScouts,
+  type ScoutDb, type ScoutPlayer, type ScoutRow, type ScoutSort,
 } from '@/domain/scouting'
 import type { Player, RoleDefinition } from '@/domain/types'
+import { loadColumnLayout, saveColumnLayout } from '@/lib/columnPrefs'
 import { getSaveLink, lastSavePath, setSaveLink } from '@/lib/saveLink'
 import { useI18n } from '@/i18n'
 import { useStore } from '@/store'
@@ -34,6 +36,12 @@ import { CompareDialog } from './CompareDialog'
 
 /** Lignes affichées au plus : au-delà, il faut affiner les filtres. */
 const LIMIT = 200
+
+/** Colonnes du tableau ; chacune (sauf les postes) sert aussi de critère de tri. */
+type ScoutColumn = 'name' | 'age' | 'club' | 'positions' | 'foot' | 'contract' | 'wage' | 'value' | 'avgRating' | 'rating'
+const SCOUT_COLUMNS: ScoutColumn[] = ['name', 'age', 'club', 'positions', 'foot', 'contract', 'wage', 'value', 'avgRating', 'rating']
+const COLUMNS_KEY = 'scouting.columns'
+const sortOf = (c: ScoutColumn): ScoutSort | null => (c === 'positions' ? null : c)
 
 /** Valeur de transfert courte (« 75 M€ », « 8,53 M€ », « 750 k€ »), « – » si inconnue. */
 function useValueFormat(): (v: number | null) => string {
@@ -160,6 +168,10 @@ export function ScoutingPage() {
   const [nationality, setNationality] = useState('')
   const [club, setClub] = useState('')
   const [sort, setSort] = useState<ScoutSort>('rating')
+  /** Sens du tri choisi en cliquant à nouveau sur la colonne ; null = sens par défaut de la colonne. */
+  const [desc, setDesc] = useState<boolean | null>(null)
+  const [layout, setLayout] = useState(() => loadColumnLayout(COLUMNS_KEY, SCOUT_COLUMNS))
+  useEffect(() => saveColumnLayout(COLUMNS_KEY, layout), [layout])
   const [selected, setSelected] = useState<ScoutPlayer | null>(null)
   const [comparing, setComparing] = useState<Player | null>(null)
 
@@ -208,9 +220,17 @@ export function ScoutingPage() {
     return {
       search, positions, role, roles: bestRoles, minAge: num(minAge), maxAge: num(maxAge),
       minWage: num(minWage, 1e3), maxWage: num(maxWage, 1e3), minValue: num(minValue, 1e6), maxValue: num(maxValue, 1e6),
-      nationality: nationality || null, club, clubNation: clubNation || null, hideLoaned, sort, limit: LIMIT,
+      nationality: nationality || null, club, clubNation: clubNation || null, hideLoaned, sort, desc, limit: LIMIT,
     }
-  }, [search, positions, role, bestRoles, minAge, maxAge, minWage, maxWage, minValue, maxValue, nationality, club, clubNation, hideLoaned, sort]))
+  }, [search, positions, role, bestRoles, minAge, maxAge, minWage, maxWage, minValue, maxValue, nationality, club, clubNation, hideLoaned, sort, desc]))
+  /** Clic sur une colonne : la trie ; un second clic inverse le sens. */
+  const sortBy = (key: ScoutSort) => {
+    if (key === sort) setDesc(!(desc ?? defaultDescending(key)))
+    else {
+      setSort(key)
+      setDesc(null)
+    }
+  }
   const valueText = useValueFormat()
   const result = useMemo(() => (db && today ? searchScouts(db, filters, today, t.scouting.free) : null), [db, today, filters, t])
   const togglePosition = (p: Position, on: boolean) => {
@@ -237,6 +257,56 @@ export function ScoutingPage() {
       </div>
     )
   }
+
+  /** Contenu de chaque colonne du tableau. */
+  const columnDefs: Record<ScoutColumn, { label: string; title?: string; right?: boolean; cellClass?: string; cell: (r: ScoutRow) => ReactNode }> = {
+    name: {
+      label: t.fmImport.nameCol, cellClass: 'font-medium',
+      cell: ({ player: p }) => <span className="inline-flex items-center gap-1.5">{p.nationality && <Flag code={p.nationality} />}{p.name}</span>,
+    },
+    age: { label: t.squad.col.age, right: true, cellClass: 'tabular-nums', cell: (r) => r.age },
+    club: {
+      label: t.squad.col.club, cellClass: 'max-w-56',
+      cell: ({ player: p }) => {
+        const owner = clubName(db, p.owner)
+        return (
+          <span className="block truncate text-slate-300" title={owner ? t.scouting.loanFrom(owner) : undefined}>
+            {clubName(db, p.club) || <span className="text-muted-foreground">{t.scouting.free}</span>}
+            {owner && <span className="text-muted-foreground"> · {t.scouting.loanFrom(owner)}</span>}
+          </span>
+        )
+      },
+    },
+    positions: {
+      label: t.squad.col.positions,
+      cell: ({ player: p }) => <span className="inline-flex gap-1">{playedPositions(p).map((x) => <PositionChip key={x.pos} position={x.pos} familiarity={x.v} />)}</span>,
+    },
+    foot: { label: t.player.foot, cell: ({ player: p }) => t.foot[scoutFoot(p)] },
+    contract: { label: t.player.contractEnd, cellClass: 'tabular-nums text-slate-300', cell: ({ player: p }) => (p.contractEnd ? isoDate(p.contractEnd) : '–') },
+    wage: {
+      label: t.player.wage, right: true, cellClass: 'tabular-nums text-slate-300',
+      cell: ({ player: p }) => (p.wage !== null ? t.scouting.perWeek(p.wage.toLocaleString(lang)) : '–'),
+    },
+    value: { label: t.scouting.value, title: t.scouting.valueTitle, right: true, cellClass: 'tabular-nums text-slate-300', cell: ({ player: p }) => valueText(p.value) },
+    avgRating: {
+      label: t.rating.avgShort, title: t.rating.avg, right: true,
+      cell: ({ player: p }) => <AvgRating value={p.avgRating} matches={p.ratedMatches} className="text-xs" />,
+    },
+    rating: {
+      label: role ? t.scouting.rating : t.scouting.bestRating, right: true,
+      cell: ({ rating, ratedRole }) => rating && ratedRole && (
+        <span className="flex items-center justify-end gap-2">
+          {!role && <span className="max-w-40 truncate text-[11px] text-muted-foreground">{roleName(ratedRole)}</span>}
+          <RatingBadge rating={rating} size="sm" />
+        </span>
+      ),
+    },
+  }
+  // ordre enregistré et colonnes affichées (le nom reste toujours affiché)
+  const order = layout.order as ScoutColumn[]
+  const visible = order.filter((c) => !layout.hidden.includes(c))
+  const toggleColumn = (id: string, show: boolean) =>
+    setLayout((l) => ({ ...l, hidden: show ? l.hidden.filter((x) => x !== id) : [...l.hidden, id] }))
 
   return (
     <div className="flex h-full flex-col">
@@ -279,69 +349,61 @@ export function ScoutingPage() {
         <label className="flex items-center gap-2 text-xs text-slate-300">
           <Switch checked={hideLoaned} onCheckedChange={setHideLoaned} />{t.scouting.hideLoaned}
         </label>
-        <Select value={sort} onValueChange={(v) => setSort(v as ScoutSort)}>
-          <SelectTrigger size="sm" className="h-8 w-32"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {(['rating', 'avgRating', 'value', 'wage', 'age', 'name'] as const).map((s) => <SelectItem key={s} value={s}>{t.scouting.sortBy} : {t.scouting.sort[s]}</SelectItem>)}
-          </SelectContent>
-        </Select>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" className="h-8"><Columns3Icon />{t.squad.columns}</Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            {order.map((id) => (
+              <DropdownMenuCheckboxItem key={id} checked={!layout.hidden.includes(id)} disabled={id === 'name'}
+                onSelect={(e) => e.preventDefault()} onCheckedChange={(on) => toggleColumn(id, on === true)}>
+                {columnDefs[id].label}
+              </DropdownMenuCheckboxItem>
+            ))}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => setLayout({ order: [...SCOUT_COLUMNS], hidden: [] })}>{t.columns.reset}</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </PageHeader>
 
       <div className="flex min-h-0 flex-1">
         <div className="min-w-0 flex-1 overflow-auto">
 
-          <table className="w-full text-[13px]">
-            <thead className="sticky top-0 z-10 bg-card text-left text-xs text-muted-foreground">
-              <tr className="border-b border-border">
-                <th className="px-3 py-2">{t.fmImport.nameCol}</th>
-                <th className="px-2 py-2 text-right">{t.squad.col.age}</th>
-                <th className="px-2 py-2">{t.squad.col.club}</th>
-                <th className="px-2 py-2">{t.squad.col.positions}</th>
-                <th className="px-2 py-2">{t.player.foot}</th>
-                <th className="px-2 py-2">{t.player.contractEnd}</th>
-                <th className="px-2 py-2 text-right">{t.player.wage}</th>
-                <th className="px-2 py-2 text-right" title={t.scouting.valueTitle}>{t.scouting.value}</th>
-                <th className="px-2 py-2 text-right" title={t.rating.avg}>{t.rating.avgShort}</th>
-                <th className="px-3 py-2 text-right">{role ? t.scouting.rating : t.scouting.bestRating}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {result.rows.map(({ player: p, age, rating, ratedRole }) => {
-                const owner = clubName(db, p.owner)
-                return (
-                  <tr key={p.index} onClick={() => setSelected(p)}
-                    className={cn('cursor-pointer border-b border-border/50 hover:bg-secondary/40', selected?.index === p.index && 'bg-emerald-500/10')}>
-                    <td className="px-3 py-1.5 font-medium">
-                      <span className="inline-flex items-center gap-1.5">{p.nationality && <Flag code={p.nationality} />}{p.name}</span>
-                    </td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{age}</td>
-                    <td className="max-w-56 px-2 py-1.5">
-                      <span className="block truncate text-slate-300" title={owner ? t.scouting.loanFrom(owner) : undefined}>
-                        {clubName(db, p.club) || <span className="text-muted-foreground">{t.scouting.free}</span>}
-                        {owner && <span className="text-muted-foreground"> · {t.scouting.loanFrom(owner)}</span>}
-                      </span>
-                    </td>
-                    <td className="px-2 py-1.5">
-                      <span className="inline-flex gap-1">{playedPositions(p).map((x) => <PositionChip key={x.pos} position={x.pos} familiarity={x.v} />)}</span>
-                    </td>
-                    <td className="px-2 py-1.5">{t.foot[scoutFoot(p)]}</td>
-                    <td className="px-2 py-1.5 tabular-nums text-slate-300">{p.contractEnd ? isoDate(p.contractEnd) : '–'}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums text-slate-300">{p.wage !== null ? t.scouting.perWeek(p.wage.toLocaleString(lang)) : '–'}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums text-slate-300">{valueText(p.value)}</td>
-                    <td className="px-2 py-1.5 text-right"><AvgRating value={p.avgRating} matches={p.ratedMatches} className="text-xs" /></td>
-                    <td className="px-3 py-1.5">
-                      {rating && ratedRole && (
-                        <span className="flex items-center justify-end gap-2">
-                          {!role && <span className="max-w-40 truncate text-[11px] text-muted-foreground">{roleName(ratedRole)}</span>}
-                          <RatingBadge rating={rating} size="sm" />
+          <ColumnDnd onMove={(from, to) => setLayout((l) => ({ ...l, order: moveColumn(l.order, from, to) }))}
+            labelOf={(id) => columnDefs[id as ScoutColumn].label}>
+            <table className="w-full text-[13px]">
+              <thead className="sticky top-0 z-10 bg-card text-left text-xs text-muted-foreground">
+                <tr className="border-b border-border">
+                  {visible.map((id) => {
+                    const def = columnDefs[id]
+                    const key = sortOf(id)
+                    const active = key !== null && key === sort
+                    return (
+                      <ReorderableTh key={id} columnId={id} onClick={key ? () => sortBy(key) : undefined}
+                        title={[def.title, t.columns.hint].filter(Boolean).join(' — ')}
+                        className={cn('px-2.5 py-2', def.right ? 'text-right' : 'text-left', key && 'cursor-pointer hover:text-slate-200', active && 'text-slate-200')}>
+                        <span className={cn('inline-flex items-center gap-1', def.right && 'flex-row-reverse')}>
+                          {def.label}
+                          {active && (desc ?? defaultDescending(key)) && <ArrowDownIcon className="size-3" />}
+                          {active && !(desc ?? defaultDescending(key)) && <ArrowUpIcon className="size-3" />}
                         </span>
-                      )}
-                    </td>
+                      </ReorderableTh>
+                    )
+                  })}
+                </tr>
+              </thead>
+              <tbody>
+                {result.rows.map((row) => (
+                  <tr key={row.player.index} onClick={() => setSelected(row.player)}
+                    className={cn('cursor-pointer border-b border-border/50 hover:bg-secondary/40', selected?.index === row.player.index && 'bg-emerald-500/10')}>
+                    {visible.map((id) => (
+                      <td key={id} className={cn('px-2.5 py-1.5', columnDefs[id].right && 'text-right', columnDefs[id].cellClass)}>{columnDefs[id].cell(row)}</td>
+                    ))}
                   </tr>
-                )
-              })}
-            </tbody>
-          </table>
+                ))}
+              </tbody>
+            </table>
+          </ColumnDnd>
           {result.total > result.rows.length && (
             <p className="px-5 py-3 text-xs text-muted-foreground">{t.scouting.more(result.total - result.rows.length)}</p>
           )}

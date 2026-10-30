@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { SAVE_VALUES, todayGameDate } from './fmSave'
-import { decodeScouting, rateScout, scoutAsPlayer, searchScouts, type ScoutFilters } from './scouting'
+import { decodeScouting, defaultDescending, rateScout, scoutAsPlayer, searchScouts, type ScoutFilters } from './scouting'
 import type { RoleDefinition } from './types'
 
 interface Fake {
@@ -139,6 +139,21 @@ describe('base de scouting', () => {
     // salaire inconnu (Zubeldia, l'agent libre) : écarté dès qu'une borne est donnée
     expect(names({ maxWage: 45_000 })).toEqual(['Javi López', 'Mikel Oyarzábal'])
     expect(names({ minWage: 45_000 })).toEqual(['Orri Óskarsson'])
+  })
+
+  it('trie dans les deux sens, les valeurs inconnues restant en dernier', () => {
+    const today = db.gameDate!
+    const names = (f: Partial<ScoutFilters>) => searchScouts(db, { ...base, ...f }, today).rows.map((r) => r.player.name)
+    // sens par défaut de chaque colonne : âge croissant, salaire décroissant
+    expect(names({ sort: 'age' })).toEqual(['Orri Óskarsson', 'Javi López', 'Igor Zubeldia', 'Mikel Oyarzábal', 'Agent Libre'])
+    expect(names({ sort: 'age', desc: true })).toEqual(['Agent Libre', 'Igor Zubeldia', 'Mikel Oyarzábal', 'Javi López', 'Orri Óskarsson'])
+    expect(names({ sort: 'wage' })).toEqual(['Orri Óskarsson', 'Mikel Oyarzábal', 'Javi López', 'Agent Libre', 'Igor Zubeldia'])
+    expect(names({ sort: 'wage', desc: false })).toEqual(['Javi López', 'Mikel Oyarzábal', 'Orri Óskarsson', 'Agent Libre', 'Igor Zubeldia'])
+    // club : alphabétique, le joueur sans club en dernier dans les deux sens
+    expect(names({ sort: 'club' })).toEqual(['Javi López', 'Igor Zubeldia', 'Mikel Oyarzábal', 'Orri Óskarsson', 'Agent Libre'])
+    expect(names({ sort: 'club', desc: true })).toEqual(['Igor Zubeldia', 'Mikel Oyarzábal', 'Orri Óskarsson', 'Javi López', 'Agent Libre'])
+    expect(defaultDescending('age')).toBe(false)
+    expect(defaultDescending('value')).toBe(true)
   })
 
   it('lit la note moyenne de la saison et trie par note moyenne', () => {
