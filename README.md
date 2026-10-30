@@ -2,7 +2,7 @@
 
 Application Windows de gestion d'équipe pour **Football Manager 27** : effectif et attributs, notes de chaque joueur par rôle, composition automatique du meilleur XI et tactiques par glisser-déposer.
 
-La saisie est **manuelle** pour l'instant (l'export Ctrl+P n'existe plus dans FM27). La lecture directe de la mémoire du jeu est prévue dans une version future, via l'interface `DataSource`.
+L'effectif s'importe **directement depuis une sauvegarde FM27** (fichier `.fm`), par captures d'écran du jeu, ou se saisit à la main (l'export Ctrl+P n'existe plus dans FM27).
 
 ## Fonctionnalités
 
@@ -11,6 +11,7 @@ La saisie est **manuelle** pour l'instant (l'export Ctrl+P n'existe plus dans FM
 - **Logos Transfermarkt automatiques** d'après le nom du club (club géré comme clubs de prêt), mis en cache. Rendu au choix dans les réglages (halo, contour, pastille blanche ou aucun) pour que les écussons sombres restent lisibles.
 
 ### Effectif
+- **Import depuis une sauvegarde** (`.fm`, jeu fermé ou non, fichier jamais modifié) : choix du club (club géré présélectionné), puis équipe première et joueurs prêtés avec les 47 attributs, la familiarité aux postes, le pied, l'âge à la date du jeu, la nationalité et la fin de contrat. Les joueurs connus sont mis à jour (étoiles, salaire, valeur, statut, notes et photo conservés), les autres créés.
 - Tableau triable et filtrable (recherche, poste, statut, âge max), colonnes au choix (dont les 47 attributs), mémorisées. Colonne **Club** avec logo.
 - Vue **Tous / Au club / Prêtés**. Les joueurs prêtés sont hors effectif et jamais alignés ; leur club d'accueil est affiché avec son logo.
 - **Nationalité avec drapeau**, choisie dans une liste alphabétique avec recherche (pays, nations britanniques, Kosovo).
@@ -90,7 +91,8 @@ src/
   components/  Composants métier (cartes, badges, mini-terrain, RolePicker) ; ui/ = shadcn
   pages/       Écrans : Squad, PlayerSheet, PlayerForm, Tactic, Roles, Settings
   lib/         Utilitaires : confirmations, modes de fenêtre, cn
-src-tauri/     Application Rust : plugins, migrations SQL, commande transfermarkt_get
+src-tauri/     Application Rust : plugins, migrations SQL, commande transfermarkt_get,
+               lecture des sauvegardes FM27 (fm_save.rs), captures et OCR (fm_screen.rs)
 ```
 
 ## Versions

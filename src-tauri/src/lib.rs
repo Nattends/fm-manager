@@ -1,3 +1,4 @@
+mod fm_save;
 mod fm_screen;
 
 use tauri_plugin_sql::{Migration, MigrationKind};
@@ -111,11 +112,34 @@ fn fm_hotkey(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
   Ok(())
 }
 
+/// Lit une sauvegarde FM27 : manager, club géré, date du jeu et clubs (gardée en mémoire pour la suite).
+#[tauri::command]
+async fn fm_save_scan(path: String) -> Result<fm_save::SaveSummary, String> {
+  tauri::async_runtime::spawn_blocking(move || fm_save::load(&path).map(|s| s.summary()))
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Joueurs d'un club de la sauvegarde : équipe première et joueurs prêtés.
+#[tauri::command]
+async fn fm_save_players(path: String, club_id: u32) -> Result<Vec<fm_save::SavePlayer>, String> {
+  tauri::async_runtime::spawn_blocking(move || fm_save::load(&path)?.club_players(club_id))
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   use tauri::Emitter;
   tauri::Builder::default()
-    .invoke_handler(tauri::generate_handler![transfermarkt_get, fm_ocr, fm_capture_now, fm_hotkey])
+    .invoke_handler(tauri::generate_handler![
+      transfermarkt_get,
+      fm_ocr,
+      fm_capture_now,
+      fm_hotkey,
+      fm_save_scan,
+      fm_save_players
+    ])
     .plugin(
       tauri_plugin_global_shortcut::Builder::new()
         .with_handler(|app, _shortcut, event| {

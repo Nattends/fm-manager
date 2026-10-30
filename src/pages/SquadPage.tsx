@@ -2,7 +2,7 @@ import {
   createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, useReactTable,
   type SortingState, type VisibilityState,
 } from '@tanstack/react-table'
-import { ArrowDownIcon, ArrowUpIcon, Columns3Icon, MonitorDownIcon, PlusIcon, SearchIcon, XIcon } from 'lucide-react'
+import { ArrowDownIcon, ArrowUpIcon, Columns3Icon, HardDriveDownloadIcon, MonitorDownIcon, PlusIcon, SearchIcon, XIcon } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -27,6 +27,7 @@ import type { Player, PlayerStatus } from '@/domain/types'
 import { useI18n } from '@/i18n'
 import { useStore } from '@/store'
 import { FmImportDialog } from './FmImportDialog'
+import { FmSaveImportDialog } from './FmSaveImportDialog'
 import { PlayerForm } from './PlayerForm'
 import { PlayerSheet } from './PlayerSheet'
 
@@ -77,6 +78,7 @@ export function SquadPage() {
   const [visibility, setVisibility] = useState<VisibilityState>(loadVisibility)
   const [creating, setCreating] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [importingSave, setImportingSave] = useState(false)
   const [openId, setOpenId] = useState<number | null>(null)
   /** Tous les joueurs du club, ceux présents au club ou ceux prêtés (hors effectif). */
   const [view, setView] = useState<SquadView>(loadView)
@@ -202,6 +204,7 @@ export function SquadPage() {
       <PageHeader title={t.squad.title} count={t.squad.count(squadCount)}
         actions={(
           <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setImportingSave(true)}><HardDriveDownloadIcon />{t.fmSave.button}</Button>
             <Button variant="outline" onClick={() => setImporting(true)}><MonitorDownIcon />{t.fmImport.button}</Button>
             <Button onClick={() => setCreating(true)}><PlusIcon />{t.squad.addPlayer}</Button>
           </div>
@@ -332,6 +335,7 @@ export function SquadPage() {
 
       {creating && <PlayerForm onClose={() => setCreating(false)} />}
       {importing && <FmImportDialog onClose={() => setImporting(false)} />}
+      {importingSave && <FmSaveImportDialog onClose={() => setImportingSave(false)} />}
       {openId !== null && <PlayerSheet playerId={openId} onClose={() => setOpenId(null)} />}
     </div>
   )

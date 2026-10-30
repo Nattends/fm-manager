@@ -1,6 +1,6 @@
 [package]
 name = "fm27-manager"
-version = "0.8.0"
+version = "0.9.0"
 description = "Gestion d'équipe pour Football Manager 27"
 authors = ["Nathan"]
 license = ""
@@ -30,6 +30,8 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 tauri-plugin-process = "2"
 base64 = "0.22"
 png = "0.17"
+# Lecture des sauvegardes FM27 (frames zstd)
+zstd = "0.13"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
