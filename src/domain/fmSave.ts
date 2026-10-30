@@ -37,9 +37,9 @@ export interface SavePlayer {
   birth: GameDate
   nation: number
   /** Familiarité 1-20 dans l'ordre de `SAVE_POSITIONS`. */
-  positions: number[]
+  positions: ArrayLike<number>
   /** 54 valeurs 1-100 dans l'ordre de `SAVE_VALUES`. */
-  values: number[]
+  values: ArrayLike<number>
   contractEnd: GameDate | null
   onLoan: boolean
   hostClub: string
@@ -100,6 +100,12 @@ export function displayValue(raw: number): number {
 export function isoDate(d: GameDate): string {
   const date = new Date(Date.UTC(d.year, 0, d.day))
   return date.toISOString().slice(0, 10)
+}
+
+/** Date réelle du jour, pour une sauvegarde dont la date du jeu est inconnue. */
+export function todayGameDate(now = new Date()): GameDate {
+  const start = Date.UTC(now.getFullYear(), 0, 0)
+  return { day: Math.round((Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) - start) / 86400000), year: now.getFullYear() }
 }
 
 /** Âge à la date du jeu. */

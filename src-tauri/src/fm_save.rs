@@ -445,22 +445,78 @@ impl ParsedSave {
     }
     Ok(out)
   }
+
+  /// Base de scouting : tous les joueurs, en binaire compact (décodé par src/domain/scouting.ts).
+  ///
+  /// `FMS1`, horodatage u64 (ms), chemin [u16 + texte], date du jeu (jour u16, année u16, 0 si inconnue),
+  /// clubs [u32 n] × (nation u16, nom [u16 + texte]), joueurs [u32 n] × (15 postes, 54 valeurs, naissance jour/année u16,
+  /// nation u16, club u32, club propriétaire u32 (FFFFFFFF si aucun), fin de contrat jour/année u16, nom [u8 + texte]).
+  pub fn scouting_snapshot(&self, path: &str, refreshed_at: u64) -> Vec<u8> {
+    fn text16(out: &mut Vec<u8>, s: &str) {
+      let b = &s.as_bytes()[..s.len().min(u16::MAX as usize)];
+      out.extend_from_slice(&(b.len() as u16).to_le_bytes());
+      out.extend_from_slice(b);
+    }
+    let owner = self.team_owner();
+    let mut out = Vec::with_capacity(self.players.len() * 110 + self.clubs.len() * 24);
+    out.extend_from_slice(b"FMS1");
+    out.extend_from_slice(&refreshed_at.to_le_bytes());
+    text16(&mut out, path);
+    let date = self.game_date.unwrap_or(GameDate { day: 0, year: 0 });
+    out.extend_from_slice(&date.day.to_le_bytes());
+    out.extend_from_slice(&date.year.to_le_bytes());
+    out.extend_from_slice(&(self.clubs.len() as u32).to_le_bytes());
+    for c in &self.clubs {
+      out.extend_from_slice(&(c.nation as u16).to_le_bytes());
+      text16(&mut out, if c.short_name.is_empty() { &c.name } else { &c.short_name });
+    }
+    out.extend_from_slice(&(self.players.len() as u32).to_le_bytes());
+    let index = |team: u32| owner.get(&team).map_or(NONE, |&i| i as u32);
+    for p in &self.players {
+      out.extend_from_slice(&p.positions);
+      out.extend_from_slice(&p.values);
+      out.extend_from_slice(&p.birth.day.to_le_bytes());
+      out.extend_from_slice(&p.birth.year.to_le_bytes());
+      out.extend_from_slice(&(p.nation as u16).to_le_bytes());
+      let club = index(p.team);
+      out.extend_from_slice(&club.to_le_bytes());
+      // club propriétaire, s'il est différent (joueur prêté) : celui du dernier contrat
+      let owned_by = p.contracts.last().map_or(NONE, |c| index(c.0));
+      out.extend_from_slice(&(if owned_by == club { NONE } else { owned_by }).to_le_bytes());
+      let end = p.contracts.iter().find(|c| index(c.0) == club && club != NONE).or(p.contracts.first()).and_then(|c| c.1);
+      let end = end.unwrap_or(GameDate { day: 0, year: 0 });
+      out.extend_from_slice(&end.day.to_le_bytes());
+      out.extend_from_slice(&end.year.to_le_bytes());
+      let name = &p.name.as_bytes()[..p.name.len().min(255)];
+      out.push(name.len() as u8);
+      out.extend_from_slice(name);
+    }
+    out
+  }
 }
 
-fn cached(path: &str) -> Option<Arc<ParsedSave>> {
+/// Clé du cache : chemin, taille et date de modification (le jeu réécrit le fichier à chaque sauvegarde).
+fn cache_key(path: &str) -> Result<String, String> {
+  let meta = std::fs::metadata(path).map_err(|e| e.to_string())?;
+  let modified = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_millis());
+  Ok(format!("{path}|{}|{modified}", meta.len()))
+}
+
+fn cached(key: &str) -> Option<Arc<ParsedSave>> {
   let cache = CACHE.lock().ok()?;
-  cache.as_ref().filter(|(p, _)| p == path).map(|(_, s)| s.clone())
+  cache.as_ref().filter(|(k, _)| k == key).map(|(_, s)| s.clone())
 }
 
-/// Lit une sauvegarde (ou reprend la dernière lue) et la garde en mémoire.
+/// Lit une sauvegarde (ou reprend la dernière lue si le fichier n'a pas changé) et la garde en mémoire.
 pub fn load(path: &str) -> Result<Arc<ParsedSave>, String> {
-  if let Some(s) = cached(path) {
+  let key = cache_key(path)?;
+  if let Some(s) = cached(&key) {
     return Ok(s);
   }
   let file = std::fs::read(path).map_err(|e| e.to_string())?;
   let parsed = Arc::new(parse(&file)?);
   if let Ok(mut cache) = CACHE.lock() {
-    *cache = Some((path.to_string(), parsed.clone()));
+    *cache = Some((key, parsed.clone()));
   }
   Ok(parsed)
 }
@@ -506,6 +562,9 @@ mod tests {
     let players = save.club_players(s.managed_club_id.unwrap()).unwrap();
     if let Ok(out) = std::env::var("FM_SAVE_OUT") {
       std::fs::write(out, serde_json::to_string(&players).unwrap()).unwrap();
+    }
+    if let Ok(out) = std::env::var("FM_SCOUT_OUT") {
+      std::fs::write(out, save.scouting_snapshot(&path, 0)).unwrap();
     }
     for p in &players {
       println!("{} né {:?} nation {} fin {:?} prêt {} {}", p.name, p.birth, p.nation, p.contract_end, p.on_loan, p.host_club);

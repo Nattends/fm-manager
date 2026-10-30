@@ -139,6 +139,40 @@ async fn fm_save_players(path: String, club_id: u32) -> Result<Vec<fm_save::Save
     .map_err(|e| e.to_string())?
 }
 
+/// Fichier de la base de scouting, dans le dossier de données de l'appli.
+fn scouting_file(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+  use tauri::Manager;
+  let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+  std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+  Ok(dir.join("scouting.bin"))
+}
+
+/// Relit la sauvegarde et enregistre tous ses joueurs comme base de scouting. Renvoie leur nombre.
+#[tauri::command]
+async fn fm_scout_refresh(app: tauri::AppHandle, path: String) -> Result<u32, String> {
+  let file = scouting_file(&app)?;
+  tauri::async_runtime::spawn_blocking(move || {
+    let save = fm_save::load(&path)?;
+    let now = std::time::SystemTime::now()
+      .duration_since(std::time::UNIX_EPOCH)
+      .map_or(0, |d| d.as_millis() as u64);
+    std::fs::write(&file, save.scouting_snapshot(&path, now)).map_err(|e| e.to_string())?;
+    Ok(save.summary().total_players)
+  })
+  .await
+  .map_err(|e| e.to_string())?
+}
+
+/// Base de scouting enregistrée (vide si elle n'a jamais été créée).
+#[tauri::command]
+async fn fm_scout_data(app: tauri::AppHandle) -> Result<tauri::ipc::Response, String> {
+  let file = scouting_file(&app)?;
+  let bytes = tauri::async_runtime::spawn_blocking(move || std::fs::read(file).unwrap_or_default())
+    .await
+    .map_err(|e| e.to_string())?;
+  Ok(tauri::ipc::Response::new(bytes))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   use tauri::Emitter;
@@ -149,7 +183,9 @@ pub fn run() {
       fm_capture_now,
       fm_hotkey,
       fm_save_scan,
-      fm_save_players
+      fm_save_players,
+      fm_scout_refresh,
+      fm_scout_data
     ])
     .plugin(
       tauri_plugin_global_shortcut::Builder::new()

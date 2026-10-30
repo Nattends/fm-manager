@@ -9,33 +9,19 @@ import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { LoanBadge, PositionChip } from '@/components/chips'
 import { Flag } from '@/components/Nationality'
-import { savePlayers, scanSave } from '@/data/fmSave'
+import { refreshScouting, savePlayers, scanSave } from '@/data/fmSave'
 import {
-  FM_NATIONS, isoDate, planSaveImport, SAVE_POSITIONS, type GameDate, type SaveClub, type SavePlayer, type SaveSummary,
+  FM_NATIONS, isoDate, planSaveImport, SAVE_POSITIONS, todayGameDate, type SaveClub, type SavePlayer, type SaveSummary,
 } from '@/domain/fmSave'
 import { normalizeText } from '@/domain/photoMatch'
 import type { Position } from '@/domain/positions'
+import { lastSavePath, setSaveLink } from '@/lib/saveLink'
 import { useI18n } from '@/i18n'
 import { useStore } from '@/store'
 
-const PATH_KEY = 'fmSave.path'
 /** Clubs affichés au plus dans la liste (il y en a plusieurs milliers). */
 const MAX_CLUBS = 60
 
-function lastPath(): string | undefined {
-  try {
-    return localStorage.getItem(PATH_KEY) ?? undefined
-  } catch {
-    return undefined
-  }
-}
-
-/** Date réelle, si la sauvegarde ne donne pas la date du jeu. */
-function realToday(): GameDate {
-  const now = new Date()
-  const start = Date.UTC(now.getFullYear(), 0, 0)
-  return { day: Math.floor((Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) - start) / 86400000), year: now.getFullYear() }
-}
 
 function ClubPicker({ clubs, value, onChange }: { clubs: SaveClub[]; value: number | null; onChange: (id: number) => void }) {
   const { t } = useI18n()
@@ -104,11 +90,8 @@ export function FmSaveImportDialog({ onClose }: { onClose: () => void }) {
   const [applying, setApplying] = useState(false)
 
   const pick = async () => {
-    const picked = await open({ title: t.fmSave.pickTitle, defaultPath: lastPath(), filters: [{ name: 'Football Manager', extensions: ['fm'] }] })
+    const picked = await open({ title: t.fmSave.pickTitle, defaultPath: lastSavePath(), filters: [{ name: 'Football Manager', extensions: ['fm'] }] })
     if (typeof picked !== 'string') return
-    try {
-      localStorage.setItem(PATH_KEY, picked)
-    } catch { /* stockage indisponible */ }
     setPath(picked)
     setSummary(null)
     setRead([])
@@ -138,7 +121,7 @@ export function FmSaveImportDialog({ onClose }: { onClose: () => void }) {
     }
   }
 
-  const today = useMemo(() => summary?.gameDate ?? realToday(), [summary])
+  const today = useMemo(() => summary?.gameDate ?? todayGameDate(), [summary])
   const plan = useMemo(() => planSaveImport(read, players, activeClub, today), [read, players, activeClub, today])
 
   const apply = async () => {
@@ -152,6 +135,11 @@ export function FmSaveImportDialog({ onClose }: { onClose: () => void }) {
         else updated++
       }
       toast.success(t.fmImport.done(created, updated))
+      if (path) {
+        // le club de l'appli est désormais lié à cette sauvegarde (Réglages › Rafraîchir), et la base de scouting suit
+        setSaveLink(activeClub.id, { path, saveClubId: clubId })
+        refreshScouting(path).catch((e) => console.warn('Base de scouting', e))
+      }
       onClose()
     } catch (e) {
       toast.error(String(e))

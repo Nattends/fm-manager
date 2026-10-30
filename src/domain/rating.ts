@@ -96,11 +96,19 @@ export function nextWeight(weight: number): number {
 }
 
 /** Attributs comptés par le rôle avec leur poids (> 0), du plus lourd au plus léger. */
-export function roleWeights(role: RoleDefinition): [AttributeKey, number][] {
-  return (Object.entries(role.weights) as [AttributeKey, number][])
-    .filter(([, w]) => w > 0)
-    .sort((a, b) => b[1] - a[1])
+export function roleWeights(role: RoleDefinition): readonly (readonly [AttributeKey, number])[] {
+  // gardé par objet poids (remplacé à chaque modification du rôle) : le scouting note des dizaines de milliers de joueurs
+  let list = weightsCache.get(role.weights)
+  if (!list) {
+    list = (Object.entries(role.weights) as [AttributeKey, number][])
+      .filter(([, w]) => w > 0)
+      .sort((a, b) => b[1] - a[1])
+    weightsCache.set(role.weights, list)
+  }
+  return list
 }
+
+const weightsCache = new WeakMap<RoleDefinition['weights'], readonly (readonly [AttributeKey, number])[]>()
 
 /**
  * Note d'un joueur pour un rôle : moyenne pondérée de ses attributs (seuls les
@@ -108,19 +116,24 @@ export function roleWeights(role: RoleDefinition): [AttributeKey, number][] {
  * par le facteur de familiarité au poste. Le niveau en étoiles n'intervient pas.
  */
 export function rateRole(player: Player, role: RoleDefinition, position?: Position): RoleRating {
+  return rateWith((attr) => player.attributes[attr], familiarityFor(player, role, position), role)
+}
+
+/** Note pour un rôle à partir d'un accès aux attributs (1-20) et de la familiarité au poste. */
+export function rateWith(attributeOf: (attr: AttributeKey) => number | undefined, familiarity: number | undefined, role: RoleDefinition): RoleRating {
   let totalWeight = 0
   let presentWeight = 0
   let weightedSum = 0
   for (const [attr, weight] of roleWeights(role)) {
     totalWeight += weight
-    const v = player.attributes[attr]
+    const v = attributeOf(attr)
     if (v !== undefined) {
       presentWeight += weight
       weightedSum += v * weight
     }
   }
 
-  const factor = familiarityFactor(familiarityFor(player, role, position))
+  const factor = familiarityFactor(familiarity)
   const coverage = totalWeight > 0 ? presentWeight / totalWeight : 0
   if (presentWeight === 0) {
     return { score: 0, average: 0, base: 0, familiarityFactor: factor, coverage: 0, rated: false, estimated: false }

@@ -1,11 +1,13 @@
 import { open, save } from '@tauri-apps/plugin-dialog'
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
-import { DicesIcon, DownloadIcon, Loader2Icon, RefreshCwIcon, UploadIcon, UsersIcon, UserMinusIcon } from 'lucide-react'
+import { DatabaseIcon, DicesIcon, DownloadIcon, Loader2Icon, RefreshCwIcon, UploadIcon, UsersIcon, UserMinusIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { askConfirm } from '@/lib/confirm'
 import { changeAttrThreshold, resetAttrThresholds, useAttrThresholds } from '@/lib/attrThresholds'
 import { LOGO_STYLES, setLogoStyle, useLogoStyle } from '@/lib/logoStyle'
+import { refreshFromSave } from '@/lib/refreshFromSave'
+import { getSaveLink, lastSavePath, setSaveLink } from '@/lib/saveLink'
 import { appVersion, checkForUpdate } from '@/lib/updates'
 import { cn } from '@/lib/utils'
 import { loadSizeLock, setSizeLock } from '@/lib/windowMode'
@@ -35,6 +37,8 @@ export function SettingsPage() {
   const [sizeLocked, setSizeLocked] = useState(loadSizeLock)
   const [version, setVersion] = useState('')
   const [checking, setChecking] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
+  const [saveLink, setSaveLinkState] = useState(() => getSaveLink(activeClub.id))
   useEffect(() => {
     appVersion().then(setVersion).catch(() => setVersion('?'))
   }, [])
@@ -49,6 +53,32 @@ export function SettingsPage() {
       toast.error(t.updates.failed(String(e)))
     } finally {
       setChecking(false)
+    }
+  }
+
+  const pickSave = async (defaultPath?: string) => {
+    const picked = await open({ title: t.fmSave.pickTitle, defaultPath, filters: [{ name: 'Football Manager', extensions: ['fm'] }] })
+    return typeof picked === 'string' ? picked : null
+  }
+
+  /** Relit la sauvegarde liée au club actif (ou une autre, choisie maintenant). */
+  const refresh = async (choose: boolean) => {
+    setRefreshing(true)
+    try {
+      if (choose) {
+        const path = await pickSave(saveLink?.path ?? lastSavePath())
+        if (!path) return
+        setSaveLink(activeClub.id, { path, saveClubId: null })
+      }
+      const r = await refreshFromSave(activeClub, players, savePlayer, pickSave)
+      setSaveLinkState(getSaveLink(activeClub.id))
+      if (!r) return
+      toast.success(t.settings.refreshDone(r.clubName, r.created, r.updated, r.scouted),
+        r.missing > 0 ? { description: t.settings.refreshMissing(r.missing) } : undefined)
+    } catch (e) {
+      toast.error(t.settings.refreshFailed(String(e)))
+    } finally {
+      setRefreshing(false)
     }
   }
 
@@ -209,7 +239,17 @@ export function SettingsPage() {
           </Panel>
 
           <Panel title={t.settings.dataSource}>
-            <p className="text-[13px] leading-relaxed text-muted-foreground">{t.settings.dataSourceText}</p>
+            <p className="mb-2 text-[13px] leading-relaxed text-muted-foreground">{t.settings.dataSourceText}</p>
+            <p className="mb-3 truncate text-xs text-slate-400" title={saveLink?.path}>
+              {saveLink ? t.settings.linkedSave(saveLink.path.split(/[\\/]/).pop() ?? saveLink.path) : t.settings.noLinkedSave}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={() => void refresh(false)} disabled={refreshing}>
+                {refreshing ? <Loader2Icon className="animate-spin" /> : <DatabaseIcon />}
+                {refreshing ? t.settings.refreshing : t.settings.refresh}
+              </Button>
+              <Button variant="outline" onClick={() => void refresh(true)} disabled={refreshing}>{t.settings.changeSave}</Button>
+            </div>
           </Panel>
 
           <Panel title={t.settings.backup} className="col-span-2">

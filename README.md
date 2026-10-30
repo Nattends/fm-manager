@@ -19,6 +19,11 @@ L'effectif s'importe **directement depuis une sauvegarde FM27** (fichier `.fm`),
 - Formulaire avec infos de base obligatoires, attributs détaillés facultatifs et choix des postes sur un mini-terrain.
 - **Photos Transfermarkt automatiques** : recherche par nom, filtrée par âge et nationalité, mise en cache locale. Les joueurs générés par le jeu ou introuvables ont un avatar « inconnu ». Actions « Rechercher à nouveau » et « Mauvaise photo ».
 
+### Scouting
+- **Tous les joueurs du jeu** (environ 83 000), lus dans la sauvegarde : recherche par nom, poste joué, **rôle avec note** (même calcul que pour l'effectif), âge, nationalité et club (« Libre » pour les joueurs sans club). Classement par note, âge ou nom ; club actuel et club propriétaire des joueurs prêtés, fin de contrat.
+- Fiche du joueur sélectionné : attributs, mini-terrain des postes, meilleurs rôles.
+- **Réglages › Rafraîchir les données** : relit la sauvegarde liée au club actif (retenue lors de l'import), met à jour l'effectif (nouvelles recrues créées) et la base de scouting. « Changer de sauvegarde… » pour en lier une autre.
+
 ### Notes par rôle
 - 95 rôles : 10 profils du notebook *position score calculator* et 85 rôles FM (`roles.json`, poids 5 / 3 / 1).
 - Note sur 100 = moyenne pondérée des attributs (1-20), passée dans une courbe qui écarte bien les bons joueurs (≈ 77) des excellents (≈ 92), puis multipliée par la **familiarité au poste** (Naturel ×1 … jamais joué ×0,5).

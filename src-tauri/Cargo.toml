@@ -1,6 +1,6 @@
 [package]
 name = "fm27-manager"
-version = "0.9.1"
+version = "0.10.0"
 description = "Gestion d'équipe pour Football Manager 27"
 authors = ["Nathan"]
 license = ""

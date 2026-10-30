@@ -10,6 +10,7 @@ import { offerUpdate } from '@/components/updateToast'
 import { useI18n } from './i18n'
 import { LANGUAGES } from './i18n/languages'
 import { RolesPage } from './pages/RolesPage'
+import { ScoutingPage } from './pages/ScoutingPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { SquadPage } from './pages/SquadPage'
 import { TacticPage } from './pages/TacticPage'
@@ -19,6 +20,7 @@ const PAGES = {
   squad: SquadPage,
   tactic: TacticPage,
   roles: RolesPage,
+  scouting: ScoutingPage,
   settings: SettingsPage,
 } as const
 
