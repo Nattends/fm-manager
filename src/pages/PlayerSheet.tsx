@@ -1,4 +1,4 @@
-import { EllipsisIcon, PencilIcon, RefreshCwIcon, SearchIcon, Trash2Icon, UserXIcon } from 'lucide-react'
+import { ArrowLeftRightIcon, EllipsisIcon, PencilIcon, RefreshCwIcon, SearchIcon, Trash2Icon, UserXIcon } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { askConfirm } from '@/lib/confirm'
 import { cn } from '@/lib/utils'
@@ -23,12 +23,14 @@ import { POSITIONS } from '@/domain/positions'
 import { allRoleRatings, bestRole } from '@/domain/rating'
 import { useI18n } from '@/i18n'
 import { useStore } from '@/store'
+import { CompareDialog } from './CompareDialog'
 import { PlayerForm } from './PlayerForm'
 
 export function PlayerSheet({ playerId, onClose }: { playerId: number; onClose: () => void }) {
   const { players, roles, deletePlayer, resetPhoto } = useStore()
   const { t, roleName, money, date } = useI18n()
   const [editing, setEditing] = useState(false)
+  const [comparing, setComparing] = useState(false)
   const [roleSearch, setRoleSearch] = useState('')
   const [playedOnly, setPlayedOnly] = useState(true)
   const player = players.find((p) => p.id === playerId)
@@ -50,6 +52,7 @@ export function PlayerSheet({ playerId, onClose }: { playerId: number; onClose: 
   }
 
   if (editing) return <PlayerForm player={player} onClose={() => setEditing(false)} />
+  if (comparing) return <CompareDialog first={player} source="database" onClose={() => setComparing(false)} />
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -221,6 +224,7 @@ export function PlayerSheet({ playerId, onClose }: { playerId: number; onClose: 
           <Button variant="destructive" onClick={remove}><Trash2Icon />{t.common.delete}</Button>
           <div className="flex gap-2">
             <Button variant="ghost" onClick={onClose}>{t.common.close}</Button>
+            <Button variant="outline" onClick={() => setComparing(true)}><ArrowLeftRightIcon />{t.compare.action}</Button>
             <Button onClick={() => setEditing(true)}><PencilIcon />{t.common.edit}</Button>
           </div>
         </div>

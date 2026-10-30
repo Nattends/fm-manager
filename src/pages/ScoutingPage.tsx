@@ -1,12 +1,10 @@
 import { open } from '@tauri-apps/plugin-dialog'
-import { ChevronsUpDownIcon, DatabaseIcon, Loader2Icon, SearchIcon } from 'lucide-react'
+import { ArrowLeftRightIcon, ChevronsUpDownIcon, DatabaseIcon, Loader2Icon, SearchIcon } from 'lucide-react'
 import { useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Input } from '@/components/ui/input'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -16,6 +14,7 @@ import { EmptyState, PageHeader, SectionTitle } from '@/components/layout'
 import { LoanBadge, PositionChip } from '@/components/chips'
 import { Flag, NationalityPicker } from '@/components/Nationality'
 import { PositionPitch } from '@/components/PositionPitch'
+import { RoleSelect } from '@/components/RoleSelect'
 import { RatingBadge } from '@/components/ui'
 import { attrColor } from '@/components/styles'
 import { loadScouting, refreshScouting } from '@/data/fmSave'
@@ -27,49 +26,14 @@ import {
   clubName, SCOUT_PLAYS_AT, scoutAsPlayer, scoutFoot, scoutToday, searchScouts,
   type ScoutDb, type ScoutPlayer, type ScoutSort,
 } from '@/domain/scouting'
-import type { RoleDefinition } from '@/domain/types'
+import type { Player, RoleDefinition } from '@/domain/types'
 import { getSaveLink, lastSavePath, setSaveLink } from '@/lib/saveLink'
 import { useI18n } from '@/i18n'
 import { useStore } from '@/store'
+import { CompareDialog } from './CompareDialog'
 
 /** Lignes affichées au plus : au-delà, il faut affiner les filtres. */
 const LIMIT = 200
-
-function RoleSelect({ roles, value, onChange }: { roles: RoleDefinition[]; value: RoleDefinition | null; onChange: (r: RoleDefinition | null) => void }) {
-  const { t, roleName } = useI18n()
-  const [open, setOpen] = useState(false)
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button type="button"
-          className="flex h-8 w-52 min-w-0 items-center gap-2 rounded-md border border-input bg-transparent px-3 text-left text-sm shadow-xs outline-none hover:bg-secondary/40 focus-visible:ring-2 focus-visible:ring-ring/50 dark:bg-input/30">
-          <span className={cn('flex-1 truncate', !value && 'text-muted-foreground')}>{value ? roleName(value) : t.scouting.role}</span>
-          <ChevronsUpDownIcon className="size-3.5 shrink-0 opacity-50" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent className="w-72 p-0" align="start">
-        <Command>
-          <CommandInput placeholder={t.roles.search} />
-          <CommandList className="max-h-80">
-            <CommandEmpty>–</CommandEmpty>
-            <CommandGroup>
-              <CommandItem value="__none" onSelect={() => { onChange(null); setOpen(false) }} className="text-muted-foreground">
-                {t.scouting.noRole}
-              </CommandItem>
-              {roles.map((r) => (
-                <CommandItem key={r.id} value={`${roleName(r)} ${r.id}`} data-checked={r.id === value?.id}
-                  onSelect={() => { onChange(r); setOpen(false) }} className="text-xs">
-                  <span className="truncate">{roleName(r)}</span>
-                  <span className="ml-auto shrink-0 pl-2 text-[10px] text-muted-foreground">{r.positions.map((p) => t.positions[p]).join('/')}</span>
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
-  )
-}
 
 /** Postes joués (Compétent et plus), du meilleur au moins bon. */
 function playedPositions(p: ScoutPlayer) {
@@ -80,7 +44,13 @@ function playedPositions(p: ScoutPlayer) {
     .slice(0, 3)
 }
 
-function ScoutDetail({ db, player, today, roles }: { db: ScoutDb; player: ScoutPlayer; today: GameDate; roles: RoleDefinition[] }) {
+function ScoutDetail({ db, player, today, roles, onCompare }: {
+  db: ScoutDb
+  player: ScoutPlayer
+  today: GameDate
+  roles: RoleDefinition[]
+  onCompare: (p: Player) => void
+}) {
   const { t, roleName } = useI18n()
   const p = useMemo(() => scoutAsPlayer(player, db, today), [player, db, today])
   const best = useMemo(() => rolesForPlayer(p, roles).slice(0, 5), [p, roles])
@@ -88,9 +58,12 @@ function ScoutDetail({ db, player, today, roles }: { db: ScoutDb; player: ScoutP
   return (
     <div className="space-y-5 p-5">
       <div className="space-y-1">
-        <h2 className="flex items-center gap-2 text-lg font-semibold">
-          {p.nationality && <Flag code={p.nationality} />}{p.name}
-        </h2>
+        <div className="flex items-start justify-between gap-2">
+          <h2 className="flex items-center gap-2 text-lg font-semibold">
+            {p.nationality && <Flag code={p.nationality} />}{p.name}
+          </h2>
+          <Button variant="outline" size="sm" onClick={() => onCompare(p)}><ArrowLeftRightIcon />{t.compare.action}</Button>
+        </div>
         <p className="text-sm text-muted-foreground">
           {t.squad.col.age} {p.age} · {p.club || t.scouting.free} · {t.foot[p.foot]}
           {p.contractEnd && ` · ${t.player.contractEnd} ${p.contractEnd}`}
@@ -147,6 +120,7 @@ export function ScoutingPage() {
   const [club, setClub] = useState('')
   const [sort, setSort] = useState<ScoutSort>('rating')
   const [selected, setSelected] = useState<ScoutPlayer | null>(null)
+  const [comparing, setComparing] = useState<Player | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -317,10 +291,11 @@ export function ScoutingPage() {
         </div>
         <aside className="w-[26rem] shrink-0 overflow-y-auto border-l border-border bg-card/40">
           {selected
-            ? <ScoutDetail db={db} player={selected} today={today} roles={bestRoles} />
+            ? <ScoutDetail db={db} player={selected} today={today} roles={bestRoles} onCompare={setComparing} />
             : <EmptyState message={t.scouting.selectHint} />}
         </aside>
       </div>
+      {comparing && <CompareDialog first={comparing} source="club" onClose={() => setComparing(null)} />}
     </div>
   )
 }

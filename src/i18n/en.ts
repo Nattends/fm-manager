@@ -404,6 +404,26 @@ export const en = {
     bestRoles: 'Best roles',
     more: (n: number) => `${n.toLocaleString()} more players: refine the filters.`,
   },
+  compare: {
+    action: 'Compare',
+    title: 'Compare players',
+    description: 'Attributes and role ratings of two players side by side.',
+    pick: 'Choose a player…',
+    change: 'Change player',
+    myClub: 'My club',
+    database: 'Database',
+    noPlayer: 'No player found.',
+    noDatabase: 'No scouting database yet: build it from the Scouting page.',
+    typeToSearch: 'Type at least 2 letters of the name.',
+    role: 'Compared role',
+    vs: 'vs',
+    empty: 'Choose a second player to compare.',
+    betterAttributes: 'better attributes',
+    inRole: (a: number, b: number) => `${a} – ${b} in the role`,
+    weightTitle: (w: number) => `Weight ×${w} in the compared role`,
+    playedByEither: 'Positions played by either player',
+    pickRoleHint: 'Click a role to compare it',
+  },
 }
 
 export type Messages = typeof en
