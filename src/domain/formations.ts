@@ -19,7 +19,7 @@ export interface Formation {
   slots: FormationSlot[]
 }
 
-/** Crée un poste sur une case ; sans rôle précisé, prend le profil par défaut du poste. */
+/** Crée un poste sur une case ; sans rôle précisé, prend le rôle avec ballon par défaut du poste. */
 export function makeSlot(id: string, row: number, col: number, defaultRole?: string): FormationSlot {
   const position = positionAt(row, col)
   if (!position) throw new Error(`Invalid cell (${row}, ${col}) for ${id}`)
@@ -37,7 +37,7 @@ export const FORMATIONS: Formation[] = [
   {
     id: '4-2-3-1',
     slots: [GK, ...BACK_FOUR,
-      s('dml', 3, 1, 'dm'), s('dmr', 3, 3, 'vol'),
+      s('dml', 3, 1), s('dmr', 3, 3, 'fm-deep-lying-playmaker'),
       s('aml', 1, 0), s('amc', 1, 2), s('amr', 1, 4),
       s('st', 0, 2)],
   },
@@ -46,7 +46,7 @@ export const FORMATIONS: Formation[] = [
     slots: [GK, ...BACK_FOUR,
       s('dm', 3, 2),
       s('mcl', 2, 1), s('mcr', 2, 3),
-      s('aml', 1, 0), s('amr', 1, 4, 'w'),
+      s('aml', 1, 0), s('amr', 1, 4),
       s('st', 0, 2)],
   },
   {
@@ -59,7 +59,7 @@ export const FORMATIONS: Formation[] = [
     id: '4-1-4-1',
     slots: [GK, ...BACK_FOUR,
       s('dm', 3, 2),
-      s('ml', 2, 0), s('mcl', 2, 1), s('mcr', 2, 3), s('mr', 2, 4, 'amrl'),
+      s('ml', 2, 0), s('mcl', 2, 1), s('mcr', 2, 3), s('mr', 2, 4, 'fm-inside-winger'),
       s('st', 0, 2)],
   },
   {

@@ -69,10 +69,7 @@ export const fr: Messages = {
     '5-3-2': '5-3-2',
   },
   customFormation: (shape) => `${shape} (perso)`,
-  roleNames: {
-    gk: 'Gardien', fb: 'Latéral', cb: 'Défenseur central', dm: 'Milieu défensif', vol: 'Segundo volante',
-    box2: 'Milieu box-to-box', w: 'Ailier', amrl: 'Ailier inversé', amc: 'Milieu offensif', str: 'Attaquant',
-  },
+  roleNames: {},
   rating: {
     noData: "Aucun attribut de ce rôle n'est renseigné",
     estimated: (pct, avg) => `Note partielle : ${pct} % des attributs pondérés du rôle renseignés (moyenne ${avg}/20)`,
@@ -255,7 +252,7 @@ export const fr: Messages = {
     count: (n) => `· ${n} rôles`,
     search: 'Rechercher un rôle…',
     lines: { goalkeeper: 'Gardien', defence: 'Défense', midfield: 'Milieu', attack: 'Attaque' },
-    source: { notebook: 'notebook', fm: 'FM', custom: 'perso' },
+    source: { ip: 'avec ballon', oop: 'sans ballon', custom: 'perso' },
     totalWeightLabel: 'Poids total',
     legend: { 5: '×5 essentiel', 3: '×3 clé', 1: '×1 préféré', 0: 'non compté' },
   },

@@ -8,7 +8,7 @@ export const ESTIMATED_THRESHOLD = 0.6
 export interface RoleRating {
   /** Note finale sur 100 (courbe de notation × familiarité). 0 si aucun attribut du rôle n'est renseigné. */
   score: number
-  /** Moyenne pondérée des attributs, sur l'échelle FM 1-20 (comme le notebook). */
+  /** Moyenne pondérée des attributs, sur l'échelle FM 1-20. */
   average: number
   /** Note sur 100 avant pénalité de poste. */
   base: number
@@ -86,7 +86,7 @@ export function familiarityFor(player: Player, role: RoleDefinition, position?: 
 export const WEIGHT_CYCLE = [0, 5, 3, 1] as const
 
 /**
- * Poids suivant au clic. Un poids hors paliers (ex. ×8 ou ×11 venant du notebook)
+ * Poids suivant au clic. Un poids hors paliers (ex. ×8 ou ×11 dans un rôle importé)
  * passe au palier inférieur le plus proche.
  */
 export function nextWeight(weight: number): number {

@@ -177,7 +177,7 @@ export function ScoutingPage() {
   }
 
   const today = useMemo(() => (db ? scoutToday(db) : null), [db])
-  // meilleure note : rôles avec ballon et profils du notebook (les rôles sans ballon n'ont que 2-3 attributs clés)
+  // meilleure note : rôles avec ballon (les rôles sans ballon n'ont que 2-3 attributs clés) et rôles perso
   const bestRoles = useMemo(() => roles.filter((r) => r.phase !== 'oop'), [roles])
   const positionRoles = useMemo(
     () => (positions.length ? roles.filter((r) => r.positions.some((p) => positions.includes(p))) : roles), [roles, positions])

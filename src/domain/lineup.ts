@@ -1,4 +1,4 @@
-import { DEFAULT_ROLE_BY_POSITION, DEFAULT_ROLES } from './defaultRoles'
+import { DEFAULT_ROLE_BY_POSITION, DEFAULT_ROLES, defaultRoleFor } from './defaultRoles'
 import {
   CUSTOM_FORMATION_ID, getFormation, makeSlot, matchPreset, type Formation, type FormationSlot,
 } from './formations'
@@ -72,7 +72,8 @@ export function patchShape(slots: TacticSlot[], phase: Phase, slotId: string, pa
 
 /** Sans ballon = avec ballon (même case, même rôle) pour tous les postes. */
 export function copyInPossession(slots: TacticSlot[]): TacticSlot[] {
-  return slots.map((s) => ({ ...s, oop: shapeOf(s) }))
+  // mêmes cases ; le rôle devient le rôle sans ballon par défaut du poste
+  return slots.map((s) => ({ ...s, oop: { ...shapeOf(s), roleId: defaultRoleFor(positionAt(s.row, s.col) ?? 'MC', 'oop') } }))
 }
 
 /** Partie modifiable d'une tactique par glisser-déposer. */
@@ -85,7 +86,7 @@ export interface Assignment {
 export function defaultTacticSlots(formation: Formation): TacticSlot[] {
   return formation.slots.map((s) => {
     const shape: SlotShape = { row: s.row, col: s.col, roleId: s.defaultRole, duty: 'auto' }
-    return { slotId: s.id, ...shape, oop: { ...shape }, lockedPlayerId: null }
+    return { slotId: s.id, ...shape, oop: { ...shape, roleId: defaultRoleFor(s.position, 'oop') }, lockedPlayerId: null }
   })
 }
 
@@ -99,10 +100,11 @@ export function normalizeTacticSlots(slots: Partial<TacticSlot>[], formationId: 
     const s = slots.find((x) => x.slotId === p.id)
     return { ...s, slotId: p.id, row: s?.row ?? p.row, col: s?.col ?? p.col, roleId: s?.roleId ?? p.defaultRole }
   })
-  // Tactiques enregistrées avant les phases de jeu : sans ballon = avec ballon.
+  // Tactiques enregistrées avant les phases de jeu : sans ballon = mêmes cases, rôle sans ballon par défaut.
   return base.map((s) => {
     const shape: SlotShape = { row: s.row!, col: s.col!, roleId: s.roleId!, duty: s.duty ?? 'auto' }
-    return { slotId: s.slotId!, ...shape, oop: s.oop ? shapeOf(s.oop) : { ...shape }, lockedPlayerId: s.lockedPlayerId ?? null }
+    const oop = s.oop ? shapeOf(s.oop) : { ...shape, roleId: defaultRoleFor(positionAt(shape.row, shape.col) ?? 'MC', 'oop') }
+    return { slotId: s.slotId!, ...shape, oop, lockedPlayerId: s.lockedPlayerId ?? null }
   })
 }
 
@@ -135,9 +137,10 @@ export function moveSlot(slots: TacticSlot[], slotId: string, row: number, col: 
     const position = positionAt(r, c)!
     const role = resolveRole(s.roleId, roles, position)
     const keepRole = role.id === s.roleId && role.positions.includes(position)
+    // rôle remplacé par le rôle par défaut du poste, dans la même phase (avec / sans ballon)
     return keepRole
       ? { ...s, row: r, col: c }
-      : { ...s, row: r, col: c, roleId: DEFAULT_ROLE_BY_POSITION[position], duty: 'auto' }
+      : { ...s, row: r, col: c, roleId: defaultRoleFor(position, role.phase ?? 'ip'), duty: 'auto' }
   }
 
   return slots.map((s) => {
@@ -171,13 +174,13 @@ export function widenLegacyGrid(slots: Partial<TacticSlot>[]): Partial<TacticSlo
 
 /**
  * Rôle d'un poste. Si l'identifiant n'existe plus (ancienne tactique, rôle supprimé),
- * prend le profil par défaut du poste, puis le premier rôle disponible à ce poste.
+ * prend le rôle par défaut du poste pour la phase, puis le premier rôle disponible à ce poste.
  */
-export function resolveRole(roleId: string, roles: RoleDefinition[], position: Position): RoleDefinition {
+export function resolveRole(roleId: string, roles: RoleDefinition[], position: Position, phase: Phase = 'ip'): RoleDefinition {
   const byId = (id: string) => roles.find((r) => r.id === id) ?? DEFAULT_ROLES.find((r) => r.id === id)
   return (
     byId(roleId) ??
-    byId(DEFAULT_ROLE_BY_POSITION[position]) ??
+    byId(defaultRoleFor(position, phase)) ??
     roles.find((r) => r.positions.includes(position)) ??
     DEFAULT_ROLES[0]
   )
@@ -211,7 +214,7 @@ export function computeLineup(
   const entries = tacticSlots.map((tacticSlot, i) => {
     const at = (ph: Phase) => ({
       slot: layouts[ph][i],
-      role: resolveRole(views[ph][i].roleId, roles, layouts[ph][i].position),
+      role: resolveRole(views[ph][i].roleId, roles, layouts[ph][i].position, ph),
     })
     return { tacticSlot, shape: shapeOf(views[phase][i]), ip: at('ip'), oop: at('oop') }
   })

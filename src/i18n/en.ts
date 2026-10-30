@@ -75,10 +75,8 @@ export const en = {
   } as Record<string, string>,
   customFormation: (shape: string) => `${shape} (custom)`,
   /** Noms des profils par défaut (un rôle renommé par l'utilisateur garde son nom). */
-  roleNames: {
-    gk: 'Goalkeeper', fb: 'Full-back', cb: 'Centre-back', dm: 'Defensive midfielder', vol: 'Segundo volante',
-    box2: 'Box-to-box midfielder', w: 'Winger', amrl: 'Inverted winger', amc: 'Attacking midfielder', str: 'Striker',
-  } as Record<string, string>,
+  /** Noms traduits des rôles par défaut (identifiant → nom) ; les rôles FM gardent leur nom anglais, comme dans le jeu. */
+  roleNames: {} as Record<string, string>,
   rating: {
     noData: 'No attribute of this role has been entered',
     estimated: (pct: number, avg: number) => `Partial rating: ${pct}% of this role's weighted attributes entered (average ${avg}/20)`,
@@ -261,7 +259,7 @@ export const en = {
     count: (n: number) => `· ${n} roles`,
     search: 'Search a role…',
     lines: { goalkeeper: 'Goalkeeper', defence: 'Defence', midfield: 'Midfield', attack: 'Attack' },
-    source: { notebook: 'notebook', fm: 'FM', custom: 'custom' },
+    source: { ip: 'in possession', oop: 'out of possession', custom: 'custom' },
     totalWeightLabel: 'Total weight',
     legend: { 5: '×5 essential', 3: '×3 key', 1: '×1 preferred', 0: 'not counted' },
   },

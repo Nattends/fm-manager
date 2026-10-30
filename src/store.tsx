@@ -4,7 +4,7 @@ import { ManualSource } from './data/manualSource'
 import { findClubLogo, findTransfermarktPhoto } from './data/transfermarkt'
 import { clubLogoKey } from './domain/clubMatch'
 import { photoCacheKey } from './domain/photoMatch'
-import { DEFAULT_ROLES, isObsoleteRoleList } from './domain/defaultRoles'
+import { cleanStoredRoles, DEFAULT_ROLES } from './domain/defaultRoles'
 import type { Club, NewPlayer, NewTactic, Player, RoleDefinition, Tactic } from './domain/types'
 
 interface Store {
@@ -82,11 +82,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       } catch (e) {
         console.warn('Remplissage du cache de photos impossible', e)
       }
-      // Liste enregistrée faite uniquement d'anciens rôles FM (FM24) : remplacée par les rôles par défaut actuels.
-      if (r && isObsoleteRoleList(r)) {
-        await source.saveRoles(null)
-        setCustom(null)
-      } else setCustom(r)
+      // Rôles disparus (profils du notebook, rôles FM24) retirés de la liste enregistrée ; vide → rôles par défaut.
+      const cleaned = r && cleanStoredRoles(r)
+      if (r && cleaned !== r) await source.saveRoles(cleaned)
+      setCustom(cleaned)
       setError(null)
     } catch (e) {
       setError(String(e))

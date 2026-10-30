@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { ALL_ATTRIBUTES, attributesOf, isAttributeKey, type AttributeKey } from './attributes'
-import { DEFAULT_ROLES, DEFAULT_ROLE_BY_POSITION, isRoleList } from './defaultRoles'
+import { DEFAULT_ROLES, DEFAULT_ROLE_BY_POSITION, defaultRoleFor, isRoleList } from './defaultRoles'
 import { FORMATIONS, getFormation } from './formations'
 import { hungarianMax } from './hungarian'
 import {
@@ -10,7 +10,7 @@ import {
 import { PITCH_COLS, PITCH_ROWS, formationName, positionAt } from './pitch'
 import { POSITIONS, isPosition, type Position } from './positions'
 import { allRoleRatings, familiarityFactor, MIN_ATTRIBUTE_WEIGHT, nextWeight, rateRole, scoreFromAverage } from './rating'
-import type { Attributes, Player, RoleDefinition } from './types'
+import type { Attributes, Player } from './types'
 
 let nextId = 1
 function player(name: string, positions: Partial<Record<Position, number>>, attributes: Attributes = {}, caStars = 3): Player {
@@ -26,7 +26,9 @@ function level(n: number): Attributes {
   return Object.fromEntries(ALL_ATTRIBUTES.map((a) => [a, n]))
 }
 
-const role = (id: string) => DEFAULT_ROLES.find((r) => r.id === id)!
+/** Anciens noms courts utilisés par les tests → rôles FM équivalents. */
+const ALIAS: Record<string, string> = { str: 'fm-centre-forward', cb: 'fm-centre-back', fb: 'fm-full-back', gk: 'fm-goalkeeper' }
+const role = (id: string) => DEFAULT_ROLES.find((r) => r.id === (ALIAS[id] ?? id))!
 
 describe('données par défaut', () => {
   it('les rôles ne référencent que des attributs et postes existants, avec des poids positifs', () => {
@@ -58,19 +60,13 @@ describe('données par défaut', () => {
   })
 })
 
-describe('poids du notebook « position score calculator »', () => {
+describe('poids des rôles', () => {
   // Attributs pseudo-aléatoires mais déterministes.
   const attrs = Object.fromEntries(ALL_ATTRIBUTES.map((a, i) => [a, 4 + ((i * 7) % 17)])) as Record<AttributeKey, number>
   const p = player('N', { GK: 20, DL: 20, DC: 20, DM: 20, MC: 20, ML: 20, AMC: 20, ST: 20 }, attrs)
-  const avg = (...keys: AttributeKey[]) => keys.reduce((s, k) => s + attrs[k], 0) / keys.length
-  // moyenne avec les seuls poids du rôle : vérifie que les poids reproduisent les formules du notebook
-  const weighted = (r: RoleDefinition) => {
-    const entries = Object.entries(r.weights) as [AttributeKey, number][]
-    return entries.reduce((s, [k, w]) => s + attrs[k] * w, 0) / entries.reduce((s, [, w]) => s + w, 0)
-  }
 
   it('la note compte aussi tous les autres attributs à 0,5 (ceux de gardien seulement pour les gardiens)', () => {
-    for (const r of [role('fb'), role('gk')]) {
+    for (const r of [role('fm-full-back'), role('fm-goalkeeper'), role('fm-centre-forward')]) {
       const gk = r.positions.includes('GK')
       const keys = ALL_ATTRIBUTES.filter((a) => gk || !attributesOf('goalkeeping').includes(a) || r.weights[a])
       const w = (a: AttributeKey) => Math.max(r.weights[a] ?? 0, MIN_ATTRIBUTE_WEIGHT)
@@ -78,43 +74,7 @@ describe('poids du notebook « position score calculator »', () => {
       expect(rateRole(p, r).average).toBeCloseTo(expected, 1)
     }
   })
-
-  it('latéral : (essentiels×5 + principaux×3 + secondaires×1) / 46', () => {
-    const essential = attrs.workRate + attrs.acceleration + attrs.pace + attrs.stamina
-    const core = attrs.crossing + attrs.dribbling + attrs.marking + attrs.offTheBall + attrs.tackling + attrs.teamwork
-    const secondary = attrs.agility + attrs.anticipation + attrs.concentration + attrs.decisions + attrs.firstTouch
-      + attrs.passing + attrs.positioning + attrs.technique
-    expect(weighted(role('fb'))).toBeCloseTo((essential * 5 + core * 3 + secondary) / 46, 1)
-  })
-
-  it('défenseur central : 0,75 × moyenne(principaux) + 0,25 × moyenne(secondaires)', () => {
-    const core = avg('composure', 'heading', 'jumpingReach', 'marking', 'passing', 'positioning', 'strength', 'tackling', 'pace')
-    const secondary = avg('aggression', 'anticipation', 'bravery', 'concentration', 'decisions', 'firstTouch', 'technique', 'vision')
-    expect(weighted(role('cb'))).toBeCloseTo(core * 0.75 + secondary * 0.25, 1)
-  })
-
-  it('attaquant : 0,5 × moyenne(principaux) + 0,5 × moyenne(secondaires)', () => {
-    const core = avg('composure', 'finishing', 'offTheBall', 'pace')
-    const secondary = avg('acceleration', 'agility', 'anticipation', 'balance', 'decisions', 'dribbling', 'firstTouch',
-      'passing', 'stamina', 'technique', 'workRate')
-    expect(weighted(role('str'))).toBeCloseTo(core * 0.5 + secondary * 0.5, 1)
-  })
-
-  it('ailier : 0,75 × moyenne(principaux) + 0,25 × moyenne(secondaires)', () => {
-    const core = avg('acceleration', 'crossing', 'dribbling', 'offTheBall', 'pace', 'technique')
-    const secondary = avg('agility', 'firstTouch', 'passing', 'stamina', 'workRate')
-    expect(weighted(role('w'))).toBeCloseTo(core * 0.75 + secondary * 0.25, 1)
-  })
-
-  it('gardien : (essentiels×5 + principaux×3 + secondaires×1) / 37', () => {
-    const essential = attrs.agility + attrs.reflexes
-    const core = attrs.oneOnOnes + attrs.anticipation + attrs.commandOfArea + attrs.concentration + attrs.kicking + attrs.positioning
-    const secondary = attrs.acceleration + attrs.aerialReach + attrs.composure + attrs.decisions + attrs.firstTouch
-      + attrs.handling + attrs.passing + attrs.throwing + attrs.vision
-    expect(weighted(role('gk'))).toBeCloseTo((essential * 5 + core * 3 + secondary) / 37, 1)
-  })
 })
-
 describe('rateRole', () => {
   it('ne dépend pas des étoiles', () => {
     const a = player('A', { ST: 20 }, level(15), 1)
@@ -161,7 +121,7 @@ describe('rateRole', () => {
 describe('écran Rôles et fiche joueur', () => {
   it('le clic fait tourner le poids : ×0 → ×5 → ×3 → ×1 → ×0', () => {
     expect([0, 5, 3, 1].map(nextWeight)).toEqual([5, 3, 1, 0])
-    // Poids du notebook hors paliers : palier inférieur le plus proche.
+    // Poids hors paliers (rôle importé) : palier inférieur le plus proche.
     expect(nextWeight(11)).toBe(5)
     expect(nextWeight(8)).toBe(5)
     expect(nextWeight(4)).toBe(3)
@@ -171,9 +131,9 @@ describe('écran Rôles et fiche joueur', () => {
   it('la fiche liste tous les rôles, y compris aux postes non joués', () => {
     const rows = allRoleRatings(player('H', { DC: 20 }, level(15)), DEFAULT_ROLES)
     expect(rows).toHaveLength(DEFAULT_ROLES.length)
-    expect(rows[0].role.id).toBe('cb')
+    expect(rows[0].role.positions).toContain('DC')
     expect(rows[0].playsPosition).toBe(true)
-    const striker = rows.find((r) => r.role.id === 'str')!
+    const striker = rows.find((r) => r.role.id === 'fm-centre-forward')!
     expect(striker.playsPosition).toBe(false)
     expect(striker.rating.familiarityFactor).toBe(0.5)
     expect(striker.rating.base).toBe(75)
@@ -203,13 +163,16 @@ describe('grille et formations', () => {
 
   it('déplacer une carte change le poste, garde un rôle compatible et sinon prend le profil du poste', () => {
     const slots = defaultTacticSlots(getFormation('4-2-3-1'))
-    // L'ailier inversé de gauche descend en MG : rôle toujours valable.
+    // L'ailier de gauche descend en MG : rôle toujours valable.
     const a = moveSlot(slots, 'aml', 2, 0, DEFAULT_ROLES)
-    expect(a.find((s) => s.slotId === 'aml')).toMatchObject({ row: 2, col: 0, roleId: 'amrl' })
+    expect(a.find((s) => s.slotId === 'aml')).toMatchObject({ row: 2, col: 0, roleId: 'fm-winger' })
     expect(layoutName(a)).toEqual({ presetId: 'custom', shape: '4-2-1-2-1' })
-    // Le MOC descend en MDC : rôle incompatible → profil MDC.
+    // Le MOC descend en MDC : rôle incompatible → rôle par défaut du MDC.
     const b = moveSlot(slots, 'amc', 3, 4, DEFAULT_ROLES)
-    expect(b.find((s) => s.slotId === 'amc')!.roleId).toBe('dm')
+    expect(b.find((s) => s.slotId === 'amc')!.roleId).toBe('fm-defensive-midfielder')
+    // Sans ballon, le rôle de remplacement est un rôle sans ballon.
+    const oop = moveSlot(phaseSlots(slots, 'oop'), 'amc', 3, 4, DEFAULT_ROLES)
+    expect(oop.find((s) => s.slotId === 'amc')!.roleId).toBe('fm-screening-defensive-midfielder')
   })
 
   it('déposer une carte sur une case occupée échange les deux cartes', () => {
@@ -253,8 +216,9 @@ describe('grille et formations', () => {
   })
 
   it('un ancien identifiant de rôle retombe sur le profil du poste', () => {
-    expect(resolveRole('cd', DEFAULT_ROLES, 'DC').id).toBe('cb')
-    expect(resolveRole('af', DEFAULT_ROLES, 'ST').id).toBe('str')
+    expect(resolveRole('cd', DEFAULT_ROLES, 'DC').id).toBe('fm-centre-back')
+    expect(resolveRole('af', DEFAULT_ROLES, 'ST').id).toBe('fm-centre-forward')
+    expect(resolveRole('cb', DEFAULT_ROLES, 'DC', 'oop').id).toBe('fm-covering-centre-back')
   })
 })
 
@@ -414,10 +378,10 @@ describe('phases avec et sans ballon', () => {
     return mergePhase(slots, 'oop', moveSlot(view, amr().slotId, row, col, DEFAULT_ROLES))
   }
 
-  it('par défaut, sans ballon = avec ballon', () => {
+  it('par défaut, sans ballon : mêmes cases, rôles sans ballon du poste', () => {
     const slots = defaultTacticSlots(f)
     expect(phaseSlots(slots, 'oop').map(({ row, col, roleId }) => [row, col, roleId]))
-      .toEqual(slots.map(({ row, col, roleId }) => [row, col, roleId]))
+      .toEqual(slots.map(({ row, col }) => [row, col, defaultRoleFor(positionAt(row, col)!, 'oop')]))
   })
 
   it('déplacer un poste sans ballon ne change pas la disposition avec ballon', () => {
@@ -437,10 +401,11 @@ describe('phases avec et sans ballon', () => {
     expect(s.roleId).toBe(amr().roleId)
   })
 
-  it('anciennes tactiques : la phase sans ballon reprend la phase avec ballon', () => {
+  it('anciennes tactiques : la phase sans ballon reprend les cases, avec le rôle sans ballon du poste', () => {
     const legacy = defaultTacticSlots(f).map(({ oop: _oop, ...s }) => s)
     const slots = normalizeTacticSlots(legacy, f.id)
-    expect(slots.every((s) => s.oop.row === s.row && s.oop.col === s.col && s.oop.roleId === s.roleId)).toBe(true)
+    expect(slots.every((s) => s.oop.row === s.row && s.oop.col === s.col
+      && s.oop.roleId === defaultRoleFor(positionAt(s.row, s.col)!, 'oop'))).toBe(true)
   })
 
   it('le meilleur XI tient compte des deux phases', () => {

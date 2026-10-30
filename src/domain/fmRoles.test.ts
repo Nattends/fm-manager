@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { isAttributeKey } from './attributes'
-import { DEFAULT_ROLES, isObsoleteRoleList, NOTEBOOK_ROLES } from './defaultRoles'
+import { cleanStoredRoles, DEFAULT_ROLES, DEFAULT_OOP_ROLE_BY_POSITION, DEFAULT_ROLE_BY_POSITION } from './defaultRoles'
 import { FM_ROLES } from './fmRoles'
 import { POSITIONS } from './positions'
 
@@ -27,11 +27,24 @@ describe('fmRoles', () => {
     }
   })
 
-  it('reconnaît une liste enregistrée d’anciens rôles FM', () => {
-    const old = [{ id: 'fm-afa', name: 'Advanced Forward (Attack)', positions: ['ST' as const], weights: { finishing: 5 } }]
-    expect(isObsoleteRoleList(old)).toBe(true)
-    expect(isObsoleteRoleList([...old, NOTEBOOK_ROLES[0]])).toBe(false)
-    expect(isObsoleteRoleList([...old, FM_ROLES[0]])).toBe(false)
-    expect(isObsoleteRoleList([])).toBe(false)
+  it('les rôles par défaut des postes existent, dans la bonne phase et au bon poste', () => {
+    for (const p of POSITIONS) {
+      const ip = FM_ROLES.find((r) => r.id === DEFAULT_ROLE_BY_POSITION[p])
+      const oop = FM_ROLES.find((r) => r.id === DEFAULT_OOP_ROLE_BY_POSITION[p])
+      expect(ip?.phase, p).toBe('ip')
+      expect(ip?.positions, p).toContain(p)
+      expect(oop?.phase, p).toBe('oop')
+      expect(oop?.positions, p).toContain(p)
+    }
+  })
+
+  it('retire des listes enregistrées les profils du notebook et les anciens rôles FM', () => {
+    const fm24 = { id: 'fm-afa', name: 'Advanced Forward (Attack)', positions: ['ST' as const], weights: { finishing: 5 } }
+    const notebook = { id: 'str', name: 'Striker', positions: ['ST' as const], weights: { finishing: 11 } }
+    const mine = { id: 'mon-role', name: 'Perso', positions: ['ST' as const], weights: { pace: 5 } }
+    expect(cleanStoredRoles([fm24, notebook])).toBeNull()
+    expect(cleanStoredRoles([fm24, notebook, mine, FM_ROLES[0]])).toEqual([mine, FM_ROLES[0]])
+    const current = [mine, FM_ROLES[0]]
+    expect(cleanStoredRoles(current)).toBe(current)
   })
 })

@@ -20,12 +20,12 @@ L'effectif s'importe **directement depuis une sauvegarde FM27** (fichier `.fm`),
 - **Photos Transfermarkt automatiques** : recherche par nom, filtrée par âge et nationalité, mise en cache locale. Les joueurs générés par le jeu ou introuvables ont un avatar « inconnu ». Actions « Rechercher à nouveau » et « Mauvaise photo ».
 
 ### Scouting
-- **Tous les joueurs du jeu** (environ 83 000), lus dans la sauvegarde : recherche par nom, **plusieurs postes**, rôle, âge, nationalité, club (« Libre » pour les joueurs sans club) et pays du club ; option pour masquer les joueurs prêtés. **Meilleure note** affichée par défaut (rôles avec ballon et profils du notebook), ou note du rôle choisi. Classement par note, salaire, âge ou nom ; club actuel et club propriétaire des joueurs prêtés, fin de contrat, **salaire hebdomadaire**.
+- **Tous les joueurs du jeu** (environ 83 000), lus dans la sauvegarde : recherche par nom, **plusieurs postes**, rôle, âge, nationalité, club (« Libre » pour les joueurs sans club) et pays du club ; option pour masquer les joueurs prêtés. **Meilleure note** affichée par défaut (rôles avec ballon), ou note du rôle choisi. Classement par note, salaire, âge ou nom ; club actuel et club propriétaire des joueurs prêtés, fin de contrat, **salaire hebdomadaire**.
 - Fiche du joueur sélectionné : attributs, mini-terrain des postes, meilleurs rôles.
 - **Réglages › Rafraîchir les données** : relit la sauvegarde liée au club actif (retenue lors de l'import), met à jour l'effectif (nouvelles recrues créées) et la base de scouting. « Changer de sauvegarde… » pour en lier une autre.
 
 ### Notes par rôle
-- 78 rôles : 10 profils du notebook *position score calculator* et les 68 rôles FM26/FM27 (40 avec ballon, 28 sans ballon), avec leurs attributs clés (poids 3) et préférés (poids 1), plus les attributs physiques de la ligne (poids 5). Dans la tactique, le choix du rôle propose d'abord ceux du poste et de la phase affichée.
+- Les 68 rôles FM26/FM27 (40 avec ballon, 28 sans ballon), avec leurs attributs clés (poids 3) et préférés (poids 1), plus les attributs physiques de la ligne (poids 5). Chaque poste a un rôle avec ballon et un rôle sans ballon par défaut ; dans la tactique, le choix du rôle propose d'abord ceux du poste et de la phase affichée.
 - Note sur 100 = moyenne pondérée des attributs (1-20 ; poids du rôle, et au moins ×0,5 pour tous les autres attributs, ceux de gardien seulement pour les gardiens), passée dans une courbe qui écarte bien les bons joueurs (≈ 77) des excellents (≈ 92), puis multipliée par la **familiarité au poste** (Naturel ×1 … jamais joué ×0,5).
 - Note partielle (`~`) si peu d'attributs sont saisis, pas de note (`—`) s'il n'y en a aucun.
 - Écran **Roles** : liste groupée et filtrable, poids réglables au clic (×5 → ×3 → ×1 → ×0), postes du rôle.

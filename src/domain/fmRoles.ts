@@ -6,7 +6,7 @@ import type { Phase, RoleDefinition } from './types'
 // Poids : 5 = attributs physiques communs à la ligne (comme les rôles FM24), 3 = attribut clé, 1 = préféré ; les attributs
 // « inutiles » ne sont pas comptés. Les rôles sans ballon n'ont que leurs attributs clés.
 
-/** Préfixe des identifiants des rôles FM (les profils du notebook n'en ont pas). */
+/** Préfixe des identifiants des rôles FM (les rôles créés par l'utilisateur n'en ont pas). */
 export const FM_ROLE_PREFIX = 'fm-'
 
 function fm(code: string, name: string, phase: Phase, positions: string, weights: Partial<Record<AttributeKey, number>>): RoleDefinition {

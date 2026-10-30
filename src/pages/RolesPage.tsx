@@ -10,7 +10,6 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { EmptyState, PageHeader, SectionTitle } from '@/components/layout'
 import { weightStyle } from '@/components/styles'
 import { ATTRIBUTE_GROUP_IDS, attributesOf, type AttributeKey } from '@/domain/attributes'
-import { NOTEBOOK_ROLES } from '@/domain/defaultRoles'
 import { FM_ROLE_PREFIX } from '@/domain/fmRoles'
 import { POSITIONS, type Position } from '@/domain/positions'
 import { nextWeight } from '@/domain/rating'
@@ -32,15 +31,16 @@ function lineOf(role: RoleDefinition): RoleLine {
   return 'attack'
 }
 
-type RoleSource = 'notebook' | 'fm' | 'custom'
+/** Badge d'un rôle : phase des rôles FM (avec / sans ballon), ou rôle créé par l'utilisateur. */
+type RoleSource = 'ip' | 'oop' | 'custom'
 function sourceOf(role: RoleDefinition): RoleSource {
-  if (role.id.startsWith(FM_ROLE_PREFIX)) return 'fm'
-  return NOTEBOOK_ROLES.some((r) => r.id === role.id) ? 'notebook' : 'custom'
+  if (!role.id.startsWith(FM_ROLE_PREFIX)) return 'custom'
+  return role.phase === 'oop' ? 'oop' : 'ip'
 }
 
 const SOURCE_STYLES: Record<RoleSource, string> = {
-  notebook: 'bg-violet-500/15 text-violet-300',
-  fm: 'bg-sky-500/15 text-sky-300',
+  ip: 'bg-emerald-500/15 text-emerald-300',
+  oop: 'bg-sky-500/15 text-sky-300',
   custom: 'bg-amber-500/15 text-amber-300',
 }
 
