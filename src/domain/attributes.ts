@@ -18,6 +18,9 @@ export const ATTRIBUTE_GROUPS = {
   ],
 } as const
 
+/** Premier coup de pied arrêté du groupe technique : un séparateur le précède dans la fiche joueur. */
+export const FIRST_SET_PIECE = 'corners'
+
 export type AttributeGroup = keyof typeof ATTRIBUTE_GROUPS
 export type AttributeKey = (typeof ATTRIBUTE_GROUPS)[AttributeGroup][number]
 

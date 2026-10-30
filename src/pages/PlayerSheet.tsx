@@ -18,7 +18,7 @@ import { PositionPitch } from '@/components/PositionPitch'
 import { EmptyState, SectionTitle } from '@/components/layout'
 import { PlayerAvatar, RatingBadge, Stars } from '@/components/ui'
 import { attrColor } from '@/components/styles'
-import { attributesOf, type AttributeGroup } from '@/domain/attributes'
+import { attributesOf, FIRST_SET_PIECE, type AttributeGroup } from '@/domain/attributes'
 import { POSITIONS } from '@/domain/positions'
 import { allRoleRatings, bestRole } from '@/domain/rating'
 import { useI18n } from '@/i18n'
@@ -137,7 +137,9 @@ export function PlayerSheet({ playerId, onClose }: { playerId: number; onClose: 
                     <SectionTitle>{t.attributeGroups[g]}</SectionTitle>
                     <div className="space-y-0.5">
                       {attributesOf(g).map((a) => (
-                        <div key={a} className="flex items-center justify-between gap-2 rounded px-1.5 py-0.5 text-[13px] odd:bg-secondary/30">
+                        <div key={a} className={cn('flex items-center justify-between gap-2 rounded px-1.5 py-0.5 text-[13px] odd:bg-secondary/30',
+                          // trait au-dessus des coups de pied arrêtés (sans élément en plus, pour garder l'alternance des lignes)
+                          a === FIRST_SET_PIECE && 'relative mt-3 before:absolute before:inset-x-1.5 before:-top-[7px] before:border-t before:border-border')}>
                           <span className="truncate text-slate-300">{t.attributes[a]}</span>
                           <span className={cn('font-semibold tabular-nums', attrColor(player.attributes[a]))}>{player.attributes[a] ?? '–'}</span>
                         </div>
