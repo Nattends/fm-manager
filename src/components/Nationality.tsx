@@ -26,7 +26,13 @@ export function Nationality({ value, className, flagOnly }: { value: string; cla
 }
 
 /** Choix de la nationalité : liste alphabétique avec drapeaux et recherche. Enregistre le code. */
-export function NationalityPicker({ value, onChange, className }: { value: string; onChange: (code: string) => void; className?: string }) {
+export function NationalityPicker({ value, onChange, placeholder, className }: {
+  value: string
+  onChange: (code: string) => void
+  /** Texte affiché sans valeur (par défaut : « Choisir une nationalité »). */
+  placeholder?: string
+  className?: string
+}) {
   const { t, lang } = useI18n()
   const [open, setOpen] = useState(false)
   const nations = useMemo(() => sortedNations(lang), [lang])
@@ -37,7 +43,7 @@ export function NationalityPicker({ value, onChange, className }: { value: strin
       <PopoverTrigger asChild>
         <button type="button"
           className={cn('flex h-9 w-full min-w-0 items-center gap-2 rounded-md border border-input bg-transparent px-3 text-left text-sm shadow-xs outline-none hover:bg-secondary/40 focus-visible:ring-2 focus-visible:ring-ring/50 dark:bg-input/30', className)}>
-          {value.trim() ? <Nationality value={value} className="flex-1" /> : <span className="flex-1 text-muted-foreground">{t.player.chooseNationality}</span>}
+          {value.trim() ? <Nationality value={value} className="flex-1" /> : <span className="flex-1 truncate text-muted-foreground">{placeholder ?? t.player.chooseNationality}</span>}
           <ChevronsUpDownIcon className="size-3.5 shrink-0 opacity-50" />
         </button>
       </PopoverTrigger>

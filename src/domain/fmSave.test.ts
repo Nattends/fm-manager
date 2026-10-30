@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ageAt, displayValue, FM_NATIONS, footFrom, isoDate, planSaveImport, SAVE_VALUES, saveFields, type SavePlayer } from './fmSave'
+import { ageAt, displayValue, FM_NATIONS, footFrom, isoDate, planSaveImport, SAVE_VALUES, saveFields, wageEuros, type SavePlayer } from './fmSave'
 import { ALL_ATTRIBUTES } from './attributes'
 import type { Player } from './types'
 
@@ -18,6 +18,7 @@ function fort(overrides: Partial<SavePlayer> = {}): SavePlayer {
     positions: [1, 1, 18, 16, 20, 1, 10, 1, 12, 10, 1, 12, 1, 17, 19],
     values,
     contractEnd: { day: 181, year: 2031 },
+    wage: 42951,
     onLoan: false,
     hostClub: '',
     ...overrides,
@@ -43,6 +44,12 @@ describe('conversion des valeurs de la sauvegarde', () => {
   it('calcule l’âge à la date du jeu', () => {
     expect(ageAt({ day: 214, year: 2006 }, today)).toBe(19)
     expect(ageAt({ day: 212, year: 2006 }, today)).toBe(20)
+  })
+
+  it('convertit le salaire en euros', () => {
+    expect(wageEuros(42951)).toBe(50000)
+    expect(wageEuros(7207)).toBe(8400)
+    expect(wageEuros(0)).toBeNull()
   })
 
   it('déduit le pied fort', () => {
@@ -71,6 +78,7 @@ describe('conversion des valeurs de la sauvegarde', () => {
     expect(f.attributes.concentration).toBe(9)
     expect(f.positions).toEqual({ DL: 18, DC: 16, DR: 20, ML: 10, MR: 12, AML: 10, AMR: 12, WBL: 17, WBR: 19 })
     expect(f.contractEnd).toBe('2031-06-30')
+    expect(f.wage).toBe(50000)
     expect(f.club).toBe('')
   })
 

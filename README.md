@@ -11,7 +11,7 @@ L'effectif s'importe **directement depuis une sauvegarde FM27** (fichier `.fm`),
 - **Logos Transfermarkt automatiques** d'après le nom du club (club géré comme clubs de prêt), mis en cache. Rendu au choix dans les réglages (halo, contour, pastille blanche ou aucun) pour que les écussons sombres restent lisibles.
 
 ### Effectif
-- **Import depuis une sauvegarde** (`.fm`, jeu fermé ou non, fichier jamais modifié) : choix du club (club géré présélectionné), puis équipe première et joueurs prêtés avec les 47 attributs, la familiarité aux postes, le pied, l'âge à la date du jeu, la nationalité et la fin de contrat. Les joueurs connus sont mis à jour (étoiles, salaire, valeur, statut, notes et photo conservés), les autres créés.
+- **Import depuis une sauvegarde** (`.fm`, jeu fermé ou non, fichier jamais modifié) : choix du club (club géré présélectionné), puis équipe première et joueurs prêtés avec les 47 attributs, la familiarité aux postes, le pied, l'âge à la date du jeu, la nationalité, la fin de contrat et le salaire. Les joueurs connus sont mis à jour (étoiles, valeur, statut, notes et photo conservés), les autres créés.
 - Tableau triable et filtrable (recherche, poste, statut, âge max), colonnes au choix (dont les 47 attributs), mémorisées. Colonne **Club** avec logo.
 - Vue **Tous / Au club / Prêtés**. Les joueurs prêtés sont hors effectif et jamais alignés ; leur club d'accueil est affiché avec son logo.
 - **Nationalité avec drapeau**, choisie dans une liste alphabétique avec recherche (pays, nations britanniques, Kosovo).
@@ -20,7 +20,7 @@ L'effectif s'importe **directement depuis une sauvegarde FM27** (fichier `.fm`),
 - **Photos Transfermarkt automatiques** : recherche par nom, filtrée par âge et nationalité, mise en cache locale. Les joueurs générés par le jeu ou introuvables ont un avatar « inconnu ». Actions « Rechercher à nouveau » et « Mauvaise photo ».
 
 ### Scouting
-- **Tous les joueurs du jeu** (environ 83 000), lus dans la sauvegarde : recherche par nom, poste joué, **rôle avec note** (même calcul que pour l'effectif), âge, nationalité et club (« Libre » pour les joueurs sans club). Classement par note, âge ou nom ; club actuel et club propriétaire des joueurs prêtés, fin de contrat.
+- **Tous les joueurs du jeu** (environ 83 000), lus dans la sauvegarde : recherche par nom, **plusieurs postes**, rôle, âge, nationalité, club (« Libre » pour les joueurs sans club) et pays du club ; option pour masquer les joueurs prêtés. **Meilleure note** affichée par défaut (rôles avec ballon et profils du notebook), ou note du rôle choisi. Classement par note, salaire, âge ou nom ; club actuel et club propriétaire des joueurs prêtés, fin de contrat, **salaire hebdomadaire**.
 - Fiche du joueur sélectionné : attributs, mini-terrain des postes, meilleurs rôles.
 - **Réglages › Rafraîchir les données** : relit la sauvegarde liée au club actif (retenue lors de l'import), met à jour l'effectif (nouvelles recrues créées) et la base de scouting. « Changer de sauvegarde… » pour en lier une autre.
 

@@ -41,6 +41,8 @@ export interface SavePlayer {
   /** 54 valeurs 1-100 dans l'ordre de `SAVE_VALUES`. */
   values: ArrayLike<number>
   contractEnd: GameDate | null
+  /** Salaire hebdomadaire en livres sterling (unité interne de FM), 0 = inconnu. */
+  wage: number
   onLoan: boolean
   hostClub: string
 }
@@ -91,6 +93,17 @@ export const FM_NATIONS: Record<number, string> = {
   239: 'tz', 240: 'ss', 242: 'fm', 243: 'mp', 244: 'tv', 247: 'me', 249: 'bl',
 }
 
+/**
+ * Euros pour une livre, au taux utilisé par FM pour l'affichage (établi sur les salaires de l'effectif :
+ * 50 000 € affichés = 42 951 £ enregistrées).
+ */
+export const EUR_PER_GBP = 1.1641
+
+/** Salaire hebdomadaire en euros (arrondi à la centaine, comme l'affiche le jeu), null si inconnu. */
+export function wageEuros(gbp: number): number | null {
+  return gbp > 0 ? Math.round((gbp * EUR_PER_GBP) / 100) * 100 : null
+}
+
 /** Valeur interne (1-100) → attribut affiché (1-20). */
 export function displayValue(raw: number): number {
   return Math.min(20, Math.max(1, Math.round(raw / 5)))
@@ -131,6 +144,7 @@ export interface SaveFields {
   positions: PositionFamiliarity
   attributes: Attributes
   contractEnd: string | null
+  wage: number | null
   onLoan: boolean
   club: string
 }
@@ -159,6 +173,7 @@ export function saveFields(p: SavePlayer, today: GameDate): SaveFields {
     positions,
     attributes,
     contractEnd: p.contractEnd ? isoDate(p.contractEnd) : null,
+    wage: wageEuros(p.wage),
     onLoan: p.onLoan,
     club: p.onLoan ? p.hostClub : '',
   }
@@ -171,8 +186,8 @@ export type SaveImportAction =
 export type SaveImportPlan = Pick<ImportPlan, 'missing'> & { actions: SaveImportAction[] }
 
 /**
- * Écritures à faire : les joueurs déjà connus sont mis à jour (âge, nationalité, postes, attributs, contrat),
- * en gardant ce que la sauvegarde ne donne pas (étoiles, salaire, valeur, statut, notes, photo).
+ * Écritures à faire : les joueurs déjà connus sont mis à jour (âge, nationalité, postes, attributs, contrat, salaire),
+ * en gardant ce que la sauvegarde ne donne pas (nom, étoiles, valeur, statut, notes, photo).
  */
 export function planSaveImport(players: SavePlayer[], existing: Player[], club: Club, today: GameDate): SaveImportPlan {
   const taken = new Set<number>()
@@ -191,6 +206,7 @@ export function planSaveImport(players: SavePlayer[], existing: Player[], club: 
         positions: f.positions,
         attributes: { ...found.attributes, ...f.attributes },
         contractEnd: f.contractEnd ?? found.contractEnd,
+        wage: f.wage ?? found.wage,
         onLoan: f.onLoan,
         club: f.onLoan ? f.club : found.club,
       }
@@ -201,7 +217,6 @@ export function planSaveImport(players: SavePlayer[], existing: Player[], club: 
         clubId: club.id,
         caStars: 2.5,
         paStars: 3,
-        wage: null,
         value: null,
         status: 'rotation',
         notes: '',

@@ -53,6 +53,8 @@ pub struct SavePlayer {
   /// 54 valeurs 1-100 : 47 attributs, les deux pieds et 5 valeurs cachées.
   pub values: Vec<u8>,
   pub contract_end: Option<GameDate>,
+  /// Salaire hebdomadaire en livres sterling (unité interne de FM), 0 si inconnu.
+  pub wage: u32,
   /// Prêté par ce club à un autre (club d'accueil dans `host_club`).
   pub on_loan: bool,
   pub host_club: String,
@@ -71,7 +73,15 @@ struct RawPlayer {
   values: Vec<u8>,
   team: u32,
   /// Équipes des contrats, dans l'ordre (le premier est avec le club propriétaire).
-  contracts: Vec<(u32, Option<GameDate>)>,
+  contracts: Vec<Contract>,
+}
+
+/// Contrat d'un joueur avec une équipe.
+struct Contract {
+  team: u32,
+  end: Option<GameDate>,
+  /// Salaire hebdomadaire en livres sterling.
+  wage: u32,
 }
 
 struct RawClub {
@@ -199,8 +209,8 @@ fn next_marker(d: &[u8], from: usize) -> Option<usize> {
   })
 }
 
-/// Contrats : `01 00 6C 07 00 [u32][équipe u32] 00×4 [u32] 01 0B 00`, fin de contrat 38 octets avant.
-fn contracts_between(d: &[u8], from: usize, to: usize) -> Vec<(u32, Option<GameDate>)> {
+/// Contrats : `01 00 6C 07 ?? [u32][équipe u32] 00×4 [salaire u32] 01 0B 00`, fin de contrat 38 octets avant.
+fn contracts_between(d: &[u8], from: usize, to: usize) -> Vec<Contract> {
   let mut out = Vec::new();
   let to = to.min(d.len().saturating_sub(24));
   for q in from.max(40)..to {
@@ -210,7 +220,7 @@ fn contracts_between(d: &[u8], from: usize, to: usize) -> Vec<(u32, Option<GameD
     {
       let end = date_at(d, q - 38);
       let end = (end.year > 1900 && end.day >= 1 && end.day <= 366).then_some(end);
-      out.push((u32_at(d, q + 9), end));
+      out.push(Contract { team: u32_at(d, q + 9), end, wage: u32_at(d, q + 17) });
     }
   }
   out
@@ -417,19 +427,14 @@ impl ParsedSave {
     let mut out = Vec::new();
     for p in &self.players {
       // contrat le plus précis (le dernier) : un joueur de l'équipe B a aussi un contrat avec le club
-      let last_contract = p.contracts.last().map(|c| c.0);
+      let last_contract = p.contracts.last().map(|c| c.team);
       let in_squad = p.team == first;
       let loaned_out =
         !in_squad && p.team != NONE && last_contract == Some(first) && !club.teams.contains(&p.team);
       if !in_squad && !loaned_out {
         continue;
       }
-      let contract_end = p
-        .contracts
-        .iter()
-        .find(|c| c.0 == first)
-        .or(p.contracts.first())
-        .and_then(|c| c.1);
+      let contract = p.contracts.iter().find(|c| c.team == first).or(p.contracts.first());
       out.push(SavePlayer {
         name: p.name.clone(),
         first_name: p.first_name.clone(),
@@ -438,7 +443,8 @@ impl ParsedSave {
         nation: p.nation,
         positions: p.positions.clone(),
         values: p.values.clone(),
-        contract_end,
+        contract_end: contract.and_then(|c| c.end),
+        wage: contract.map_or(0, |c| c.wage),
         on_loan: loaned_out,
         host_club: if loaned_out { host_name(p.team) } else { String::new() },
       });
@@ -448,9 +454,9 @@ impl ParsedSave {
 
   /// Base de scouting : tous les joueurs, en binaire compact (décodé par src/domain/scouting.ts).
   ///
-  /// `FMS1`, horodatage u64 (ms), chemin [u16 + texte], date du jeu (jour u16, année u16, 0 si inconnue),
+  /// `FMS2`, horodatage u64 (ms), chemin [u16 + texte], date du jeu (jour u16, année u16, 0 si inconnue),
   /// clubs [u32 n] × (nation u16, nom [u16 + texte]), joueurs [u32 n] × (15 postes, 54 valeurs, naissance jour/année u16,
-  /// nation u16, club u32, club propriétaire u32 (FFFFFFFF si aucun), fin de contrat jour/année u16, nom [u8 + texte]).
+  /// nation u16, club u32, club propriétaire u32 (FFFFFFFF si aucun), fin de contrat jour/année u16, salaire hebdomadaire u32 (£), nom [u8 + texte]).
   pub fn scouting_snapshot(&self, path: &str, refreshed_at: u64) -> Vec<u8> {
     fn text16(out: &mut Vec<u8>, s: &str) {
       let b = &s.as_bytes()[..s.len().min(u16::MAX as usize)];
@@ -459,7 +465,7 @@ impl ParsedSave {
     }
     let owner = self.team_owner();
     let mut out = Vec::with_capacity(self.players.len() * 110 + self.clubs.len() * 24);
-    out.extend_from_slice(b"FMS1");
+    out.extend_from_slice(b"FMS2");
     out.extend_from_slice(&refreshed_at.to_le_bytes());
     text16(&mut out, path);
     let date = self.game_date.unwrap_or(GameDate { day: 0, year: 0 });
@@ -481,12 +487,13 @@ impl ParsedSave {
       let club = index(p.team);
       out.extend_from_slice(&club.to_le_bytes());
       // club propriétaire, s'il est différent (joueur prêté) : celui du dernier contrat
-      let owned_by = p.contracts.last().map_or(NONE, |c| index(c.0));
+      let owned_by = p.contracts.last().map_or(NONE, |c| index(c.team));
       out.extend_from_slice(&(if owned_by == club { NONE } else { owned_by }).to_le_bytes());
-      let end = p.contracts.iter().find(|c| index(c.0) == club && club != NONE).or(p.contracts.first()).and_then(|c| c.1);
-      let end = end.unwrap_or(GameDate { day: 0, year: 0 });
+      let contract = p.contracts.iter().find(|c| index(c.team) == club && club != NONE).or(p.contracts.first());
+      let end = contract.and_then(|c| c.end).unwrap_or(GameDate { day: 0, year: 0 });
       out.extend_from_slice(&end.day.to_le_bytes());
       out.extend_from_slice(&end.year.to_le_bytes());
+      out.extend_from_slice(&contract.map_or(0, |c| c.wage).to_le_bytes());
       let name = &p.name.as_bytes()[..p.name.len().min(255)];
       out.push(name.len() as u8);
       out.extend_from_slice(name);
@@ -567,7 +574,7 @@ mod tests {
       std::fs::write(out, save.scouting_snapshot(&path, 0)).unwrap();
     }
     for p in &players {
-      println!("{} né {:?} nation {} fin {:?} prêt {} {}", p.name, p.birth, p.nation, p.contract_end, p.on_loan, p.host_club);
+      println!("{} né {:?} nation {} fin {:?} salaire {} £ prêt {} {}", p.name, p.birth, p.nation, p.contract_end, p.wage, p.on_loan, p.host_club);
     }
   }
 

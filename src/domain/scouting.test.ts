@@ -9,6 +9,8 @@ interface Fake {
   nation: number
   club: number
   owner?: number
+  /** Salaire hebdomadaire en livres. */
+  wage?: number
   /** Familiarités brutes, dans l'ordre GK, SW, DL, DC, DR, DM, ML, MC, MR, AML, AMC, AMR, ST, WBL, WBR. */
   positions: number[]
   finishing: number
@@ -20,7 +22,7 @@ function encode(clubs: [string, number][], players: Fake[]): Uint8Array {
   const u16 = (v: number) => out.push(v & 255, (v >> 8) & 255)
   const u32 = (v: number) => out.push(v & 255, (v >>> 8) & 255, (v >>> 16) & 255, (v >>> 24) & 255)
   const text16 = (s: string) => { const b = new TextEncoder().encode(s); u16(b.length); out.push(...b) }
-  out.push(...new TextEncoder().encode('FMS1'))
+  out.push(...new TextEncoder().encode('FMS2'))
   for (let i = 0; i < 8; i++) out.push(0)
   text16('C:/save.fm')
   u16(228); u16(2026)
@@ -35,6 +37,7 @@ function encode(clubs: [string, number][], players: Fake[]): Uint8Array {
     u32(p.club)
     u32(p.owner ?? 0xffffffff)
     u16(181); u16(2029)
+    u32(p.wage ?? 0)
     const b = new TextEncoder().encode(p.name)
     out.push(b.length, ...b)
   }
@@ -44,14 +47,14 @@ function encode(clubs: [string, number][], players: Fake[]): Uint8Array {
 const ST = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 20, 1, 1]
 const DC = [1, 1, 1, 20, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
 const bytes = encode([['Real Sociedad', 170], ['Feyenoord', 158]], [
-  { name: 'Mikel Oyarzábal', birthYear: 1997, nation: 170, club: 0, positions: ST, finishing: 85 },
-  { name: 'Orri Óskarsson', birthYear: 2004, nation: 148, club: 0, positions: ST, finishing: 70 },
+  { name: 'Mikel Oyarzábal', birthYear: 1997, nation: 170, club: 0, positions: ST, finishing: 85, wage: 37043 },
+  { name: 'Orri Óskarsson', birthYear: 2004, nation: 148, club: 0, positions: ST, finishing: 70, wage: 42951 },
   { name: 'Igor Zubeldia', birthYear: 1997, nation: 170, club: 0, positions: DC, finishing: 20 },
   { name: 'Javi López', birthYear: 2002, nation: 170, club: 1, owner: 0, positions: DC, finishing: 25 },
   { name: 'Agent Libre', birthYear: 1990, nation: 143, club: 0xffffffff, positions: ST, finishing: 60 },
 ])
 const finisher: RoleDefinition = { id: 'r', name: 'Finisseur', positions: ['ST'], weights: { finishing: 5 } }
-const base: ScoutFilters = { search: '', positions: [], role: null, roles: [], minAge: null, maxAge: null, nationality: null, club: '', hideLoaned: false, sort: 'name', limit: 100 }
+const base: ScoutFilters = { search: '', positions: [], role: null, roles: [], minAge: null, maxAge: null, nationality: null, club: '', clubNation: null, hideLoaned: false, sort: 'name', limit: 100 }
 const stopper: RoleDefinition = { id: 's', name: 'Stoppeur', positions: ['DC'], weights: { finishing: 1, marking: 5 } }
 
 describe('base de scouting', () => {
@@ -87,6 +90,7 @@ describe('base de scouting', () => {
     expect(searchScouts(db, { ...base, nationality: 'is' }, today).total).toBe(1)
     expect(searchScouts(db, { ...base, search: 'oskar' }, today).total).toBe(1)
     expect(searchScouts(db, { ...base, club: 'feye' }, today).rows[0].player.name).toBe('Javi López')
+    expect(searchScouts(db, { ...base, clubNation: 'nl' }, today).rows.map((r) => r.player.name)).toEqual(['Javi López'])
     expect(searchScouts(db, { ...base, club: 'lib' }, today, 'Libre').rows[0].player.name).toBe('Agent Libre')
     expect(searchScouts(db, { ...base, limit: 2 }, today)).toMatchObject({ total: 5 })
   })
@@ -103,6 +107,13 @@ describe('base de scouting', () => {
     }
     const zub = rows.find((r) => r.player.name === 'Igor Zubeldia')
     expect(zub?.ratedRole?.id).toBe('s')
+  })
+
+  it('lit le salaire et trie par salaire', () => {
+    expect(db.players[1].wage).toBe(50000)
+    expect(db.players[2].wage).toBeNull()
+    const { rows } = searchScouts(db, { ...base, sort: 'wage' }, db.gameDate!)
+    expect(rows.slice(0, 2).map((r) => r.player.name)).toEqual(['Orri Óskarsson', 'Mikel Oyarzábal'])
   })
 
   it('filtre plusieurs postes et masque les prêtés', () => {

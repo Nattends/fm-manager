@@ -139,6 +139,7 @@ export function ScoutingPage() {
   const [search, setSearch] = useState('')
   const [positions, setPositions] = useState<Position[]>([])
   const [hideLoaned, setHideLoaned] = useState(false)
+  const [clubNation, setClubNation] = useState('')
   const [role, setRole] = useState<RoleDefinition | null>(null)
   const [minAge, setMinAge] = useState('')
   const [maxAge, setMaxAge] = useState('')
@@ -184,9 +185,9 @@ export function ScoutingPage() {
   const filters = useDeferredValue(useMemo(() => {
     const age = (s: string) => (s.trim() === '' || !Number.isFinite(Number(s)) ? null : Number(s))
     return {
-      search, positions, role, roles: bestRoles, minAge: age(minAge), maxAge: age(maxAge), nationality: nationality || null, club, hideLoaned, sort, limit: LIMIT,
+      search, positions, role, roles: bestRoles, minAge: age(minAge), maxAge: age(maxAge), nationality: nationality || null, club, clubNation: clubNation || null, hideLoaned, sort, limit: LIMIT,
     }
-  }, [search, positions, role, bestRoles, minAge, maxAge, nationality, club, hideLoaned, sort]))
+  }, [search, positions, role, bestRoles, minAge, maxAge, nationality, club, clubNation, hideLoaned, sort]))
   const result = useMemo(() => (db && today ? searchScouts(db, filters, today, t.scouting.free) : null), [db, today, filters, t])
   const togglePosition = (p: Position, on: boolean) => {
     const next = POSITIONS.filter((x) => (x === p ? on : positions.includes(x)))
@@ -247,13 +248,14 @@ export function ScoutingPage() {
         <Input className="h-8 w-20" type="number" min={14} max={45} placeholder={t.scouting.maxAge} value={maxAge} onChange={(e) => setMaxAge(e.target.value)} />
         <NationalityPicker value={nationality} onChange={setNationality} className="h-8 w-48" />
         <Input className="h-8 w-40" placeholder={t.scouting.club} value={club} onChange={(e) => setClub(e.target.value)} />
+        <NationalityPicker value={clubNation} onChange={setClubNation} placeholder={t.scouting.clubNation} className="h-8 w-48" />
         <label className="flex items-center gap-2 text-xs text-slate-300">
           <Switch checked={hideLoaned} onCheckedChange={setHideLoaned} />{t.scouting.hideLoaned}
         </label>
         <Select value={sort} onValueChange={(v) => setSort(v as ScoutSort)}>
           <SelectTrigger size="sm" className="h-8 w-32"><SelectValue /></SelectTrigger>
           <SelectContent>
-            {(['rating', 'age', 'name'] as const).map((s) => <SelectItem key={s} value={s}>{t.scouting.sortBy} : {t.scouting.sort[s]}</SelectItem>)}
+            {(['rating', 'wage', 'age', 'name'] as const).map((s) => <SelectItem key={s} value={s}>{t.scouting.sortBy} : {t.scouting.sort[s]}</SelectItem>)}
           </SelectContent>
         </Select>
       </PageHeader>
@@ -270,6 +272,7 @@ export function ScoutingPage() {
                 <th className="px-2 py-2">{t.squad.col.positions}</th>
                 <th className="px-2 py-2">{t.player.foot}</th>
                 <th className="px-2 py-2">{t.player.contractEnd}</th>
+                <th className="px-2 py-2 text-right">{t.player.wage}</th>
                 <th className="px-3 py-2 text-right">{role ? t.scouting.rating : t.scouting.bestRating}</th>
               </tr>
             </thead>
@@ -294,6 +297,7 @@ export function ScoutingPage() {
                     </td>
                     <td className="px-2 py-1.5">{t.foot[scoutFoot(p)]}</td>
                     <td className="px-2 py-1.5 tabular-nums text-slate-300">{p.contractEnd ? isoDate(p.contractEnd) : '–'}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums text-slate-300">{p.wage !== null ? t.scouting.perWeek(p.wage.toLocaleString(lang)) : '–'}</td>
                     <td className="px-3 py-1.5">
                       {rating && ratedRole && (
                         <span className="flex items-center justify-end gap-2">

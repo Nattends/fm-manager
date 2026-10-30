@@ -194,6 +194,7 @@ export function FmSaveImportDialog({ onClose }: { onClose: () => void }) {
                       <th className="px-2 py-1.5">{t.squad.col.positions}</th>
                       <th className="px-2 py-1.5">{t.player.foot}</th>
                       <th className="px-2 py-1.5">{t.player.contractEnd}</th>
+                      <th className="px-2 py-1.5 text-right">{t.player.wage}</th>
                       <th className="px-2 py-1.5"></th>
                     </tr>
                   </thead>
@@ -221,6 +222,7 @@ export function FmSaveImportDialog({ onClose }: { onClose: () => void }) {
                           </td>
                           <td className="px-2 py-1">{t.foot[p.foot]}</td>
                           <td className="px-2 py-1 tabular-nums">{p.contractEnd ?? '–'}</td>
+                          <td className="px-2 py-1 text-right tabular-nums">{p.wage?.toLocaleString(lang) ?? '–'}</td>
                           <td className="px-2 py-1">{p.onLoan && <LoanBadge club={p.club} />}</td>
                         </tr>
                       )

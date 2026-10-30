@@ -1,5 +1,7 @@
 import type { AttributeKey } from './attributes'
-import { ageAt, displayValue, FM_NATIONS, footFrom, SAVE_POSITIONS, SAVE_VALUES, saveFields, todayGameDate, type GameDate } from './fmSave'
+import {
+  ageAt, displayValue, FM_NATIONS, footFrom, SAVE_POSITIONS, SAVE_VALUES, saveFields, todayGameDate, wageEuros, type GameDate,
+} from './fmSave'
 import { normalizeText } from './photoMatch'
 import type { Position } from './positions'
 import { familiarityFactor, rateWith, roleWeights, scoreFromAverage, type RoleRating } from './rating'
@@ -29,6 +31,8 @@ export interface ScoutPlayer {
   /** Club propriétaire quand le joueur est prêté, sinon -1. */
   owner: number
   contractEnd: GameDate | null
+  /** Salaire hebdomadaire en euros, null si inconnu. */
+  wage: number | null
 }
 
 export interface ScoutDb {
@@ -39,7 +43,7 @@ export interface ScoutDb {
   players: ScoutPlayer[]
 }
 
-const MAGIC = 'FMS1'
+const MAGIC = 'FMS2'
 const NONE = 0xffffffff
 
 /** Décode la base enregistrée ; null si elle est vide ou d'un autre format. */
@@ -72,10 +76,11 @@ export function decodeScouting(bytes: Uint8Array): ScoutDb | null {
     const club = u32()
     const owner = u32()
     const contractEnd = date()
+    const wage = wageEuros(u32())
     const name = text(bytes[p++])
     players.push({
       index: i, name, birth, nationality, positions, values,
-      club: club === NONE ? -1 : club, owner: owner === NONE ? -1 : owner, contractEnd,
+      club: club === NONE ? -1 : club, owner: owner === NONE ? -1 : owner, contractEnd, wage,
     })
   }
   return { refreshedAt, savePath, gameDate, clubs, players }
@@ -109,7 +114,7 @@ export function rateScout(p: ScoutPlayer, role: RoleDefinition, position?: Posit
 export function scoutAsPlayer(p: ScoutPlayer, db: ScoutDb, today: GameDate): Player {
   const f = saveFields({
     name: p.name, firstName: '', lastName: '', birth: p.birth, nation: -1, positions: p.positions, values: p.values,
-    contractEnd: p.contractEnd, onLoan: false, hostClub: '',
+    contractEnd: p.contractEnd, wage: 0, onLoan: false, hostClub: '',
   }, today)
   return {
     ...f,
@@ -120,7 +125,7 @@ export function scoutAsPlayer(p: ScoutPlayer, db: ScoutDb, today: GameDate): Pla
     onLoan: p.owner >= 0,
     caStars: 0,
     paStars: 0,
-    wage: null,
+    wage: p.wage,
     value: null,
     status: 'rotation',
     notes: '',
@@ -138,7 +143,7 @@ export function scoutToday(db: ScoutDb): GameDate {
   return db.gameDate ?? todayGameDate()
 }
 
-export type ScoutSort = 'rating' | 'age' | 'name'
+export type ScoutSort = 'rating' | 'age' | 'name' | 'wage'
 
 export interface ScoutFilters {
   search: string
@@ -154,6 +159,8 @@ export interface ScoutFilters {
   nationality: string | null
   /** Texte recherché dans le nom du club (« libre » pour les joueurs sans club). */
   club: string
+  /** Pays du club actuel (code de drapeau), null = tous. */
+  clubNation: string | null
   /** Masque les joueurs prêtés par leur club. */
   hideLoaned: boolean
   sort: ScoutSort
@@ -273,6 +280,7 @@ export function searchScouts(db: ScoutDb, f: ScoutFilters, today: GameDate, free
       if (!ok) continue
     }
     if (f.nationality && p.nationality !== f.nationality) continue
+    if (f.clubNation && (p.club < 0 || db.clubs[p.club].nation !== f.clubNation)) continue
     if (positionIdx.length && !positionIdx.some((i) => p.positions[i] >= SCOUT_PLAYS_AT)) continue
     const age = ages[p.index]
     if (f.minAge !== null && age < f.minAge) continue
@@ -290,6 +298,7 @@ export function searchScouts(db: ScoutDb, f: ScoutFilters, today: GameDate, free
   const byName = (a: { player: ScoutPlayer }, b: { player: ScoutPlayer }) => a.player.name.localeCompare(b.player.name)
   if (f.sort === 'rating') found.sort((a, b) => b.score - a.score || byName(a, b))
   else if (f.sort === 'age') found.sort((a, b) => a.age - b.age || byName(a, b))
+  else if (f.sort === 'wage') found.sort((a, b) => (b.player.wage ?? -1) - (a.player.wage ?? -1) || byName(a, b))
   else found.sort(byName)
   // note détaillée (badge) seulement pour les lignes affichées
   const rows = found.slice(0, f.limit).map(({ player, age, role }): ScoutRow => ({
