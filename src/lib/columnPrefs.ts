@@ -24,6 +24,22 @@ export function saveColumnLayout(key: string, layout: ColumnLayout): void {
   try { localStorage.setItem(key, JSON.stringify(layout)) } catch { /* ignoré */ }
 }
 
+/** Largeurs des colonnes redimensionnées (identifiant → pixels). */
+export function loadColumnWidths(key: string): Record<string, number> {
+  const widths: Record<string, number> = {}
+  try {
+    const raw: unknown = JSON.parse(localStorage.getItem(key) ?? '{}')
+    if (raw && typeof raw === 'object') {
+      for (const [id, w] of Object.entries(raw)) if (typeof w === 'number' && Number.isFinite(w) && w > 0) widths[id] = w
+    }
+  } catch { /* stockage indisponible ou contenu illisible */ }
+  return widths
+}
+
+export function saveColumnWidths(key: string, widths: Record<string, number>): void {
+  try { localStorage.setItem(key, JSON.stringify(widths)) } catch { /* ignoré */ }
+}
+
 /** Ordre seul (tableaux dont la visibilité est gérée à part). */
 export function loadColumnOrder(key: string, defaults: readonly string[]): string[] {
   try {

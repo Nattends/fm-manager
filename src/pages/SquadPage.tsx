@@ -16,6 +16,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { EmptyState, PageHeader } from '@/components/layout'
 import { PositionChip, StatusBadge } from '@/components/chips'
 import { ColumnDnd, ReorderableTh } from '@/components/ReorderableColumns'
+import { useColumnWidths } from '@/lib/useColumnWidths'
 import { PlayerClub } from '@/components/ClubLogo'
 import { Nationality } from '@/components/Nationality'
 import { AvgRating, PlayerAvatar, RatingBadge, Stars } from '@/components/ui'
@@ -43,6 +44,7 @@ interface Row {
 const PLAYS_AT = 14
 const VISIBILITY_KEY = 'squad.columns'
 const ORDER_KEY = 'squad.columnOrder'
+const WIDTHS_KEY = 'squad.columnWidths'
 const VIEW_KEY = 'squad.view'
 type SquadView = 'all' | 'squad' | 'loaned'
 
@@ -88,6 +90,7 @@ export function SquadPage() {
   const [sorting, setSorting] = useState<SortingState>([{ id: 'name', desc: false }])
   const [visibility, setVisibility] = useState<VisibilityState>(loadVisibility)
   const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(() => loadColumnOrder(ORDER_KEY, DEFAULT_ORDER))
+  const colWidths = useColumnWidths(WIDTHS_KEY)
   const [creating, setCreating] = useState(false)
   const [importing, setImporting] = useState(false)
   const [importingSave, setImportingSave] = useState(false)
@@ -214,9 +217,11 @@ export function SquadPage() {
     getSortedRowModel: getSortedRowModel(),
   })
 
+  const fixedTable = colWidths.tableProps(table.getVisibleLeafColumns().map((c) => c.id))
   const resetColumns = () => {
     setVisibility(defaultVisibility())
     setColumnOrder([...DEFAULT_ORDER])
+    colWidths.reset()
   }
   const setGroup = (g: AttributeGroup, visible: boolean) =>
     table.setColumnVisibility((v) => ({ ...v, ...Object.fromEntries(attributesOf(g).map((a) => [a, visible])) }))
@@ -313,14 +318,14 @@ export function SquadPage() {
         ) : (
           <ColumnDnd onMove={(from, to) => setColumnOrder((o) => moveColumn(o, from, to))}
             labelOf={(id) => String(table.getColumn(id)?.columnDef.header ?? id)}>
-          <table className="w-full border-separate border-spacing-0 text-[13px]">
+          <table {...fixedTable} className={cn('w-full border-separate border-spacing-0 text-[13px]', fixedTable.className)}>
             <thead className="sticky top-0 z-10 bg-card">
               {table.getHeaderGroups().map((hg) => (
                 <tr key={hg.id}>
                   {hg.headers.map((h) => {
                     const sorted = h.column.getIsSorted()
                     return (
-                      <ReorderableTh key={h.id} columnId={h.column.id} onClick={h.column.getToggleSortingHandler()} title={t.columns.hint}
+                      <ReorderableTh key={h.id} columnId={h.column.id} colWidths={colWidths} onClick={h.column.getToggleSortingHandler()} title={t.columns.hint}
                         className={cn(
                           'h-9 border-b border-border px-3 text-[11px] font-semibold tracking-wide whitespace-nowrap text-muted-foreground uppercase',
                           NUMERIC.has(h.column.id) ? 'text-right' : 'text-left',
@@ -346,6 +351,7 @@ export function SquadPage() {
                     <td key={cell.id}
                       className={cn(
                         'h-12 border-b border-border/60 px-3 whitespace-nowrap text-slate-300',
+                        colWidths.widthOf(cell.column.id) && 'overflow-hidden text-ellipsis',
                         NUMERIC.has(cell.column.id) && 'text-right tabular-nums',
                         cell.column.id === 'name' && 'max-w-64',
                       )}>

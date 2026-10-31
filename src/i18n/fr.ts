@@ -232,6 +232,8 @@ export const fr: Messages = {
     rolesForPosition: (pos) => `Rôles ${pos}`,
     otherRoles: 'Autres rôles',
     searchRole: 'Rechercher un rôle…',
+    roleAbbrev: 'Abréviation',
+    roleAbbrevHint: 'Affichée quand la carte est trop étroite pour le nom du rôle',
     noRole: 'Aucun rôle trouvé.',
     name: 'Nom de la tactique',
     bigView: 'Grande vue',

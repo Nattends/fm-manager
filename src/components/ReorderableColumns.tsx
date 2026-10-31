@@ -1,7 +1,8 @@
 import {
   DndContext, DragOverlay, PointerSensor, pointerWithin, useDraggable, useDroppable, useSensor, useSensors,
 } from '@dnd-kit/core'
-import { useCallback, useState, type ComponentProps, type ReactNode } from 'react'
+import { useCallback, useState, type ComponentProps, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import type { ColumnWidths } from '@/lib/useColumnWidths'
 import { cn } from '@/lib/utils'
 
 /**
@@ -39,8 +40,11 @@ export function ColumnDnd({ onMove, labelOf, children }: {
   )
 }
 
-/** En-tête de colonne qu'on peut glisser sur une autre pour changer l'ordre. */
-export function ReorderableTh({ columnId, className, children, ...props }: { columnId: string } & ComponentProps<'th'>) {
+/** En-tête de colonne qu'on peut glisser sur une autre pour changer l'ordre, et redimensionner par son bord droit. */
+export function ReorderableTh({ columnId, className, children, colWidths, ...props }: {
+  columnId: string
+  colWidths?: ColumnWidths
+} & ComponentProps<'th'>) {
   const drag = useDraggable({ id: columnId })
   const drop = useDroppable({ id: columnId })
   const { setNodeRef: setDrag } = drag
@@ -49,15 +53,39 @@ export function ReorderableTh({ columnId, className, children, ...props }: { col
     setDrag(el)
     setDrop(el)
   }, [setDrag, setDrop])
+  const startResize = (e: ReactPointerEvent<HTMLSpanElement>) => {
+    if (!colWidths) return
+    e.preventDefault()
+    e.stopPropagation()
+    const th = e.currentTarget.parentElement!
+    // largeurs affichées de toutes les colonnes, figées au premier redimensionnement
+    const snapshot: Record<string, number> = {}
+    th.parentElement!.querySelectorAll<HTMLElement>('th[data-col]').forEach((el) => { snapshot[el.dataset.col!] = el.offsetWidth })
+    const startX = e.clientX
+    const startW = th.offsetWidth
+    const move = (ev: PointerEvent) => colWidths.set(columnId, startW + ev.clientX - startX, snapshot)
+    const stop = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', stop)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', stop)
+  }
+  const width = colWidths?.widthOf(columnId)
   return (
-    <th ref={ref} {...drag.listeners} {...props}
+    <th ref={ref} data-col={columnId} {...drag.listeners} {...props} style={width ? { ...props.style, width } : props.style}
       className={cn(
-        'touch-none select-none',
+        'relative touch-none select-none',
+        width && 'overflow-hidden text-ellipsis',
         drag.isDragging && 'opacity-40',
         drop.isOver && !drag.isDragging && 'bg-sky-500/15 shadow-[inset_2px_0_0_var(--color-sky-400)]',
         className,
       )}>
       {children}
+      {colWidths && (
+        <span onPointerDown={startResize} onClick={(e) => e.stopPropagation()}
+          className="absolute inset-y-0 right-0 z-10 w-1.5cursor-col-resize hover:bg-sky-400/50" />
+      )}
     </th>
   )
 }

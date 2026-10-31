@@ -239,6 +239,8 @@ export const en = {
     rolesForPosition: (pos: string) => `${pos} roles`,
     otherRoles: 'Other roles',
     searchRole: 'Search a role…',
+    roleAbbrev: 'Short name',
+    roleAbbrevHint: 'Shown when the card is too narrow for the role name',
     noRole: 'No role found.',
     name: 'Tactic name',
     bigView: 'Big view',

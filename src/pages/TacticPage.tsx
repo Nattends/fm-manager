@@ -850,7 +850,6 @@ function SlotCard({ phase, slot, roles, starterIds, big, acceptsPlayers, onRole,
         <DraggablePlayer id={`xi-${phase}-${slot.slot.id}`} playerId={starter.player.id}>
           <div className={cn('group/body relative cursor-grab', s.body)} onClick={() => onOpen(starter.player.id)}>
             <div className="flex items-start gap-[0.4em]">
-              <RatingBadge rating={starter.rating} solid className="h-[1.6em] min-w-[2.3em] px-[0.3em] text-[0.9em]" />
               <div className={cn('line-clamp-2 min-w-0 leading-tight font-semibold [overflow-wrap:anywhere] text-white hover:underline', s.name)} title={starter.player.name}>
                 {starter.player.name}
               </div>

@@ -14,6 +14,7 @@ import { LoanBadge, PositionChip } from '@/components/chips'
 import { Flag, NationalityPicker } from '@/components/Nationality'
 import { PositionPitch } from '@/components/PositionPitch'
 import { ColumnDnd, ReorderableTh } from '@/components/ReorderableColumns'
+import { useColumnWidths } from '@/lib/useColumnWidths'
 import { RoleSelect } from '@/components/RoleSelect'
 import { AvgRating, RatingBadge } from '@/components/ui'
 import { attrColor } from '@/components/styles'
@@ -41,6 +42,7 @@ const LIMIT = 200
 type ScoutColumn = 'name' | 'age' | 'club' | 'positions' | 'foot' | 'contract' | 'wage' | 'value' | 'avgRating' | 'rating'
 const SCOUT_COLUMNS: ScoutColumn[] = ['name', 'age', 'club', 'positions', 'foot', 'contract', 'wage', 'value', 'avgRating', 'rating']
 const COLUMNS_KEY = 'scouting.columns'
+const WIDTHS_KEY = 'scouting.columnWidths'
 const sortOf = (c: ScoutColumn): ScoutSort | null => (c === 'positions' ? null : c)
 
 /** Valeur de transfert courte (« 75 M€ », « 8,53 M€ », « 750 k€ »), « – » si inconnue. */
@@ -171,6 +173,7 @@ export function ScoutingPage() {
   /** Sens du tri choisi en cliquant à nouveau sur la colonne ; null = sens par défaut de la colonne. */
   const [desc, setDesc] = useState<boolean | null>(null)
   const [layout, setLayout] = useState(() => loadColumnLayout(COLUMNS_KEY, SCOUT_COLUMNS))
+  const colWidths = useColumnWidths(WIDTHS_KEY)
   useEffect(() => saveColumnLayout(COLUMNS_KEY, layout), [layout])
   const [selected, setSelected] = useState<ScoutPlayer | null>(null)
   const [comparing, setComparing] = useState<Player | null>(null)
@@ -305,6 +308,7 @@ export function ScoutingPage() {
   // ordre enregistré et colonnes affichées (le nom reste toujours affiché)
   const order = layout.order as ScoutColumn[]
   const visible = order.filter((c) => !layout.hidden.includes(c))
+  const fixedTable = colWidths.tableProps(visible)
   const toggleColumn = (id: string, show: boolean) =>
     setLayout((l) => ({ ...l, hidden: show ? l.hidden.filter((x) => x !== id) : [...l.hidden, id] }))
 
@@ -361,7 +365,7 @@ export function ScoutingPage() {
               </DropdownMenuCheckboxItem>
             ))}
             <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => setLayout({ order: [...SCOUT_COLUMNS], hidden: [] })}>{t.columns.reset}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => { setLayout({ order: [...SCOUT_COLUMNS], hidden: [] }); colWidths.reset() }}>{t.columns.reset}</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </PageHeader>
@@ -371,7 +375,7 @@ export function ScoutingPage() {
 
           <ColumnDnd onMove={(from, to) => setLayout((l) => ({ ...l, order: moveColumn(l.order, from, to) }))}
             labelOf={(id) => columnDefs[id as ScoutColumn].label}>
-            <table className="w-full text-[13px]">
+            <table {...fixedTable} className={cn('w-full text-[13px]', fixedTable.className)}>
               <thead className="sticky top-0 z-10 bg-card text-left text-xs text-muted-foreground">
                 <tr className="border-b border-border">
                   {visible.map((id) => {
@@ -379,7 +383,7 @@ export function ScoutingPage() {
                     const key = sortOf(id)
                     const active = key !== null && key === sort
                     return (
-                      <ReorderableTh key={id} columnId={id} onClick={key ? () => sortBy(key) : undefined}
+                      <ReorderableTh key={id} columnId={id} colWidths={colWidths} onClick={key ? () => sortBy(key) : undefined}
                         title={[def.title, t.columns.hint].filter(Boolean).join(' — ')}
                         className={cn('px-2.5 py-2', def.right ? 'text-right' : 'text-left', key && 'cursor-pointer hover:text-slate-200', active && 'text-slate-200')}>
                         <span className={cn('inline-flex items-center gap-1', def.right && 'flex-row-reverse')}>
@@ -397,7 +401,7 @@ export function ScoutingPage() {
                   <tr key={row.player.index} onClick={() => setSelected(row.player)}
                     className={cn('cursor-pointer border-b border-border/50 hover:bg-secondary/40', selected?.index === row.player.index && 'bg-emerald-500/10')}>
                     {visible.map((id) => (
-                      <td key={id} className={cn('px-2.5 py-1.5', columnDefs[id].right && 'text-right', columnDefs[id].cellClass)}>{columnDefs[id].cell(row)}</td>
+                      <td key={id} className={cn('px-2.5 py-1.5', colWidths.widthOf(id) && 'overflow-hidden text-ellipsis', columnDefs[id].right && 'text-right', columnDefs[id].cellClass)}>{columnDefs[id].cell(row)}</td>
                     ))}
                   </tr>
                 ))}

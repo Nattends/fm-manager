@@ -1,6 +1,8 @@
 import { ChevronsUpDownIcon } from 'lucide-react'
-import { useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
+import { roleInitials, setRoleAbbrev, useRoleAbbrevs } from '@/lib/roleAbbrev'
+import { Input } from '@/components/ui/input'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import type { Position } from '@/domain/positions'
@@ -30,6 +32,22 @@ export function RolePicker({ roles, value, current, position, phase, player, onC
 }) {
   const { t, roleName } = useI18n()
   const [open, setOpen] = useState(false)
+  const abbrevs = useRoleAbbrevs()
+  const fullName = roleName(current)
+  const shortName = abbrevs[current.id] ?? roleInitials(fullName)
+  const boxRef = useRef<HTMLSpanElement>(null)
+  const measureRef = useRef<HTMLSpanElement>(null)
+  const [tooNarrow, setTooNarrow] = useState(false)
+  useLayoutEffect(() => {
+    const box = boxRef.current
+    const measure = measureRef.current
+    if (!box || !measure) return
+    const check = () => setTooNarrow(measure.offsetWidth > box.clientWidth)
+    check()
+    const ro = new ResizeObserver(check)
+    ro.observe(box)
+    return () => ro.disconnect()
+  }, [fullName])
   // Notes calculées seulement à l'ouverture (environ 80 rôles).
   const ratings = new Map<string, RoleRating>()
   if (open && player) for (const r of roles) ratings.set(r.id, rateRole(player, r, position))
@@ -67,11 +85,20 @@ export function RolePicker({ roles, value, current, position, phase, player, onC
           {/* note du joueur placé pour le rôle choisi, juste avant le nom du rôle */}
           {/* tailles en em : suit le texte de la carte, qui grandit avec le terrain */}
           {player && <RatingBadge rating={rateRole(player, current, position)} size="sm" className="h-[1.35em] min-w-[2.2em] shrink-0 px-[0.25em] text-[0.9em]" />}
-          <span className="min-w-0 flex-1 truncate">{roleName(current)}</span>
+          <span ref={boxRef} className="relative min-w-0 flex-1 truncate">
+            {/* mesure invisible du nom complet : si la place manque, on affiche l'abréviation */}
+            <span ref={measureRef} aria-hidden className="pointer-events-none invisible absolute whitespace-nowrap">{fullName}</span>
+            {tooNarrow ? shortName : fullName}
+          </span>
           <ChevronsUpDownIcon className="size-[1em] shrink-0 opacity-50" />
         </button>
       </PopoverTrigger>
       <PopoverContent className={cn('p-0', player ? 'w-80' : 'w-72')} align="start">
+        <div className="flex items-center gap-2 border-b border-border px-2 py-1.5" title={t.tactic.roleAbbrevHint}>
+          <span className="shrink-0 text-xs text-muted-foreground">{t.tactic.roleAbbrev}</span>
+          <Input className="h-7 flex-1 text-xs" value={abbrevs[current.id] ?? ''} placeholder={roleInitials(fullName)}
+            onChange={(e) => setRoleAbbrev(current.id, e.target.value)} />
+        </div>
         <Command>
           <CommandInput placeholder={t.tactic.searchRole} />
           <CommandList className="max-h-80">
