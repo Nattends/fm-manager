@@ -84,7 +84,7 @@ export function ReorderableTh({ columnId, className, children, colWidths, ...pro
       {children}
       {colWidths && (
         <span onPointerDown={startResize} onClick={(e) => e.stopPropagation()}
-          className="absolute inset-y-0 right-0 z-10 w-1.5cursor-col-resize hover:bg-sky-400/50" />
+          className="absolute inset-y-0 right-0 z-10 w-1.5 cursor-col-resize hover:bg-sky-400/50" />
       )}
     </th>
   )

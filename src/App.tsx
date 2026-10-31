@@ -14,10 +14,12 @@ import { ScoutingPage } from './pages/ScoutingPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { SquadPage } from './pages/SquadPage'
 import { TacticPage } from './pages/TacticPage'
+import { YouthPage } from './pages/YouthPage'
 import { useStore } from './store'
 
 const PAGES = {
   squad: SquadPage,
+  youth: YouthPage,
   tactic: TacticPage,
   roles: RolesPage,
   scouting: ScoutingPage,

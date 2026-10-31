@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { SavePlayer, SaveSummary } from '../domain/fmSave'
+import type { SavePlayer, SaveSummary, YouthPlayer } from '../domain/fmSave'
 import { decodeScouting, type ScoutDb } from '../domain/scouting'
 
 /** Lit une sauvegarde FM27 (quelques secondes) : manager, club géré, date du jeu et liste des clubs. */
@@ -10,6 +10,11 @@ export function scanSave(path: string): Promise<SaveSummary> {
 /** Équipe première et joueurs prêtés d'un club de la sauvegarde (relue depuis la mémoire si possible). */
 export function savePlayers(path: string, clubId: number): Promise<SavePlayer[]> {
   return invoke<SavePlayer[]>('fm_save_players', { path, clubId })
+}
+
+/** Joueurs des équipes de jeunes et affiliées (U19, B, C…) d'un club de la sauvegarde. */
+export function saveYouth(path: string, clubId: number): Promise<YouthPlayer[]> {
+  return invoke<YouthPlayer[]>('fm_save_youth', { path, clubId })
 }
 
 let scouting: Promise<ScoutDb | null> | null = null

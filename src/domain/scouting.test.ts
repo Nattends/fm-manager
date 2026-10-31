@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { SAVE_VALUES, todayGameDate } from './fmSave'
-import { decodeScouting, defaultDescending, rateScout, scoutAsPlayer, searchScouts, type ScoutFilters } from './scouting'
+import { decodeScouting, defaultDescending, rateScout, scoutAsPlayer, scoutKey, searchScouts, type ScoutFilters } from './scouting'
 import type { RoleDefinition } from './types'
 
 interface Fake {
@@ -177,6 +177,9 @@ describe('base de scouting', () => {
     const today = db.gameDate!
     expect(searchScouts(db, { ...base, positions: ['ST', 'DC'] }, today).total).toBe(5)
     expect(searchScouts(db, { ...base, positions: ['DC'], roles: [finisher, stopper] }, today).rows.every((r) => r.ratedRole?.id === 's')).toBe(true)
+    const javi = db.players.find((p) => p.name === 'Javi López')!
+    expect(searchScouts(db, { ...base, only: new Set([scoutKey(javi), 'inconnu']) }, today).rows.map((r) => r.player.name)).toEqual(['Javi López'])
+    expect(searchScouts(db, { ...base, only: new Set() }, today).total).toBe(0)
     expect(searchScouts(db, { ...base, hideLoaned: true }, today).rows.map((r) => r.player.name)).not.toContain('Javi López')
   })
 

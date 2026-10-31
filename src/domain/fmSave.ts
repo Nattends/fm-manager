@@ -256,3 +256,15 @@ export function planSaveImport(players: SavePlayer[], existing: Player[], club: 
   const missing = existing.filter((p) => !taken.has(p.id) && p.clubId === club.id)
   return { actions, missing }
 }
+
+/** Joueur d'une équipe de jeunes (`kind` 0 : U19…) ou affiliée (`kind` 1 : B, C…) du club ; `rank` : rang de l'équipe dans sa nature. */
+export interface YouthPlayer extends SavePlayer {
+  kind: 0 | 1
+  rank: number
+}
+
+/** Nom d'une équipe de jeunes ou affiliée : U19, U18… pour les jeunes (dans l'ordre du jeu), B, C… pour les affiliées. */
+export function youthTeamLabel(kind: 0 | 1, rank: number): string {
+  if (kind === 1) return String.fromCharCode(66 + rank)
+  return rank <= 2 ? `U${19 - rank}` : `J${rank + 1}`
+}

@@ -154,6 +154,14 @@ export function scoutAsPlayer(p: ScoutPlayer, db: ScoutDb, today: GameDate): Pla
   }
 }
 
+/**
+ * Identité d'un joueur d'une base à l'autre (l'index change à chaque actualisation) : nom, date de naissance
+ * et nationalité. Sert à retrouver les joueurs de la shortlist.
+ */
+export function scoutKey(p: Pick<ScoutPlayer, 'name' | 'birth' | 'nationality'>): string {
+  return `${p.name}|${p.birth.year}-${p.birth.day}|${p.nationality}`
+}
+
 export function clubName(db: ScoutDb, index: number): string {
   return index >= 0 ? db.clubs[index]?.name ?? '' : ''
 }
@@ -194,6 +202,8 @@ export interface ScoutFilters {
   clubNation: string | null
   /** Masque les joueurs prêtés par leur club. */
   hideLoaned: boolean
+  /** Clés (`scoutKey`) des seuls joueurs gardés, par exemple la shortlist ; absent ou null = tous. */
+  only?: ReadonlySet<string> | null
   sort: ScoutSort
   /** Sens du tri ; absent ou null = sens par défaut de la colonne (voir `defaultDescending`). */
   desc?: boolean | null
@@ -314,6 +324,7 @@ export function searchScouts(db: ScoutDb, f: ScoutFilters, today: GameDate, free
   const found: { player: ScoutPlayer; age: number; score: number; role: RoleDefinition | null }[] = []
   for (const p of db.players) {
     if (f.hideLoaned && p.owner >= 0) continue
+    if (f.only && !f.only.has(scoutKey(p))) continue
     if (clubQ) {
       const ok = p.club >= 0 ? clubMatch[p.club] : free !== '' && free.startsWith(clubQ)
       if (!ok) continue

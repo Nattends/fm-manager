@@ -145,6 +145,14 @@ async fn fm_save_players(path: String, club_id: u32) -> Result<Vec<fm_save::Save
     .map_err(|e| e.to_string())?
 }
 
+/// Joueurs des équipes de jeunes et affiliées (U19, B, C…) d'un club de la sauvegarde.
+#[tauri::command]
+async fn fm_save_youth(path: String, club_id: u32) -> Result<Vec<fm_save::YouthPlayer>, String> {
+  tauri::async_runtime::spawn_blocking(move || fm_save::load(&path)?.club_youth(club_id))
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Fichier de la base de scouting, dans le dossier de données de l'appli.
 fn scouting_file(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
   use tauri::Manager;
@@ -190,6 +198,7 @@ pub fn run() {
       fm_hotkey,
       fm_save_scan,
       fm_save_players,
+      fm_save_youth,
       fm_scout_refresh,
       fm_scout_data
     ])

@@ -1,5 +1,5 @@
 import { open } from '@tauri-apps/plugin-dialog'
-import { ArrowDownIcon, ArrowLeftRightIcon, ArrowUpIcon, ChevronsUpDownIcon, Columns3Icon, DatabaseIcon, Loader2Icon, SearchIcon } from 'lucide-react'
+import { ArrowDownIcon, ArrowUpIcon, ChevronsUpDownIcon, Columns3Icon, DatabaseIcon, Loader2Icon, SearchIcon, StarIcon } from 'lucide-react'
 import { useDeferredValue, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -9,27 +9,26 @@ import {
   DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Switch } from '@/components/ui/switch'
-import { EmptyState, PageHeader, SectionTitle } from '@/components/layout'
-import { LoanBadge, PositionChip } from '@/components/chips'
+import { EmptyState, PageHeader } from '@/components/layout'
+import { PositionChip } from '@/components/chips'
 import { Flag, NationalityPicker } from '@/components/Nationality'
-import { PositionPitch } from '@/components/PositionPitch'
 import { ColumnDnd, ReorderableTh } from '@/components/ReorderableColumns'
 import { useColumnWidths } from '@/lib/useColumnWidths'
+import { PlayerDetail } from '@/components/PlayerDetail'
+import { useValueFormat } from '@/lib/useValueFormat'
 import { RoleSelect } from '@/components/RoleSelect'
 import { AvgRating, RatingBadge } from '@/components/ui'
-import { attrColor } from '@/components/styles'
 import { loadScouting, refreshScouting } from '@/data/fmSave'
-import { ATTRIBUTE_GROUP_IDS, attributesOf, FIRST_SET_PIECE } from '@/domain/attributes'
 import { moveColumn } from '@/domain/columnLayout'
 import { isoDate, SAVE_POSITIONS, type GameDate } from '@/domain/fmSave'
 import { POSITIONS, type Position } from '@/domain/positions'
-import { rolesForPlayer } from '@/domain/rating'
 import {
-  clubName, defaultDescending, SCOUT_PLAYS_AT, scoutAsPlayer, scoutFoot, scoutToday, searchScouts,
+  clubName, defaultDescending, SCOUT_PLAYS_AT, scoutAsPlayer, scoutFoot, scoutKey, scoutToday, searchScouts,
   type ScoutDb, type ScoutPlayer, type ScoutRow, type ScoutSort,
 } from '@/domain/scouting'
 import type { Player, RoleDefinition } from '@/domain/types'
 import { loadColumnLayout, saveColumnLayout } from '@/lib/columnPrefs'
+import { useShortlist } from '@/lib/shortlist'
 import { getSaveLink, lastSavePath, setSaveLink } from '@/lib/saveLink'
 import { useI18n } from '@/i18n'
 import { useStore } from '@/store'
@@ -44,15 +43,6 @@ const SCOUT_COLUMNS: ScoutColumn[] = ['name', 'age', 'club', 'positions', 'foot'
 const COLUMNS_KEY = 'scouting.columns'
 const WIDTHS_KEY = 'scouting.columnWidths'
 const sortOf = (c: ScoutColumn): ScoutSort | null => (c === 'positions' ? null : c)
-
-/** Valeur de transfert courte (« 75 M€ », « 8,53 M€ », « 750 k€ »), « – » si inconnue. */
-function useValueFormat(): (v: number | null) => string {
-  const { lang } = useI18n()
-  return useMemo(() => {
-    const f = new Intl.NumberFormat(lang, { style: 'currency', currency: 'EUR', notation: 'compact', maximumSignificantDigits: 3 })
-    return (v: number | null) => (v === null ? '–' : f.format(v))
-  }, [lang])
-}
 
 /** Deux bornes (min, max) d'un montant, sous un même libellé. */
 function RangeInputs({ label, title, min, max, onMin, onMax }: {
@@ -83,70 +73,16 @@ function playedPositions(p: ScoutPlayer) {
     .slice(0, 3)
 }
 
-function ScoutDetail({ db, player, today, roles, onCompare }: {
-  db: ScoutDb
-  player: ScoutPlayer
-  today: GameDate
-  roles: RoleDefinition[]
-  onCompare: (p: Player) => void
-}) {
-  const { t, lang, roleName } = useI18n()
-  const p = useMemo(() => scoutAsPlayer(player, db, today), [player, db, today])
-  const best = useMemo(() => rolesForPlayer(p, roles).slice(0, 5), [p, roles])
-  const owner = clubName(db, player.owner)
-  const valueText = useValueFormat()
+/** Étoile d'ajout à la shortlist (ne déclenche pas la sélection de la ligne). */
+function ShortlistStar({ on, onToggle, className }: { on: boolean; onToggle: () => void; className?: string }) {
+  const { t } = useI18n()
+  const label = on ? t.scouting.shortlistRemove : t.scouting.shortlistAdd
   return (
-    <div className="space-y-5 p-5">
-      <div className="space-y-1">
-        <div className="flex items-start justify-between gap-2">
-          <h2 className="flex items-center gap-2 text-lg font-semibold">
-            {p.nationality && <Flag code={p.nationality} />}{p.name}
-          </h2>
-          <Button variant="outline" size="sm" onClick={() => onCompare(p)}><ArrowLeftRightIcon />{t.compare.action}</Button>
-        </div>
-        <p className="text-sm text-muted-foreground">
-          {t.squad.col.age} {p.age} · {p.club || t.scouting.free} · {t.foot[p.foot]}
-          {p.contractEnd && ` · ${t.player.contractEnd} ${p.contractEnd}`}
-        </p>
-        <p className="text-sm text-muted-foreground">
-          {t.scouting.value} <span className="font-medium text-slate-200" title={t.scouting.valueTitle}>{valueText(player.value)}</span>
-          {' · '}{t.rating.avg} <AvgRating value={player.avgRating} matches={player.ratedMatches} />
-          {player.ratedMatches > 0 && <span className="text-xs"> ({t.rating.matches(player.ratedMatches)})</span>}
-          {player.wage !== null && <> · {t.player.wage} <span className="font-medium text-slate-200">{t.scouting.perWeek(player.wage.toLocaleString(lang))}</span></>}
-        </p>
-        {owner && <LoanBadge club={owner} />}
-      </div>
-      <div className="grid grid-cols-[1fr_7rem] gap-4">
-        <div>
-          <SectionTitle>{t.scouting.bestRoles}</SectionTitle>
-          <div className="space-y-1">
-            {best.map((b) => (
-              <div key={b.role.id} className="flex items-center justify-between gap-2 text-[13px]">
-                <span className="truncate text-slate-300">{roleName(b.role)}</span>
-                <RatingBadge rating={b.rating} size="sm" />
-              </div>
-            ))}
-          </div>
-        </div>
-        <PositionPitch positions={p.positions} />
-      </div>
-      <div className="grid grid-cols-2 gap-x-5 gap-y-4">
-        {ATTRIBUTE_GROUP_IDS.map((g) => (
-          <div key={g}>
-            <SectionTitle>{t.attributeGroups[g]}</SectionTitle>
-            <div className="space-y-0.5">
-              {attributesOf(g).map((a) => (
-                <div key={a} className={cn('flex items-center justify-between gap-2 rounded px-1.5 py-0.5 text-[13px] odd:bg-secondary/30',
-                  a === FIRST_SET_PIECE && 'relative mt-3 before:absolute before:inset-x-1.5 before:-top-[7px] before:border-t before:border-border')}>
-                  <span className="truncate text-slate-300">{t.attributes[a]}</span>
-                  <span className={cn('font-semibold tabular-nums', attrColor(p.attributes[a]))}>{p.attributes[a] ?? '–'}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
+    <button type="button" title={label} aria-label={label} aria-pressed={on}
+      onClick={(e) => { e.stopPropagation(); onToggle() }}
+      className={cn('shrink-0 rounded p-0.5 text-slate-500 hover:text-amber-300', on && 'text-amber-300', className)}>
+      <StarIcon className={cn('size-4', on && 'fill-current')} />
+    </button>
   )
 }
 
@@ -174,6 +110,8 @@ export function ScoutingPage() {
   const [desc, setDesc] = useState<boolean | null>(null)
   const [layout, setLayout] = useState(() => loadColumnLayout(COLUMNS_KEY, SCOUT_COLUMNS))
   const colWidths = useColumnWidths(WIDTHS_KEY)
+  const shortlist = useShortlist(activeClub.id)
+  const [onlyShortlist, setOnlyShortlist] = useState(false)
   useEffect(() => saveColumnLayout(COLUMNS_KEY, layout), [layout])
   const [selected, setSelected] = useState<ScoutPlayer | null>(null)
   const [comparing, setComparing] = useState<Player | null>(null)
@@ -207,6 +145,13 @@ export function ScoutingPage() {
   }
 
   const today = useMemo(() => (db ? scoutToday(db) : null), [db])
+  const selectedPlayer = useMemo(() => (db && today && selected ? scoutAsPlayer(selected, db, today) : null), [db, today, selected])
+  // joueurs de la shortlist absents de la base (après une actualisation, par exemple)
+  const missing = useMemo(() => {
+    if (!db || !shortlist.keys.size) return 0
+    const present = new Set(db.players.map(scoutKey))
+    return [...shortlist.keys].filter((k) => !present.has(k)).length
+  }, [db, shortlist.keys])
   // base lue avant la v0.15 : pas de valeurs tant qu'elle n'est pas actualisée
   // base lue avant la v0.16 : pas de notes moyennes tant qu'elle n'est pas actualisée
   const hasValues = useMemo(() => !!db?.players.some((p) => p.value !== null) && !!db?.players.some((p) => p.avgRating !== null), [db])
@@ -223,9 +168,9 @@ export function ScoutingPage() {
     return {
       search, positions, role, roles: bestRoles, minAge: num(minAge), maxAge: num(maxAge),
       minWage: num(minWage, 1e3), maxWage: num(maxWage, 1e3), minValue: num(minValue, 1e6), maxValue: num(maxValue, 1e6),
-      nationality: nationality || null, club, clubNation: clubNation || null, hideLoaned, sort, desc, limit: LIMIT,
+      nationality: nationality || null, club, clubNation: clubNation || null, hideLoaned, only: onlyShortlist ? shortlist.keys : null, sort, desc, limit: LIMIT,
     }
-  }, [search, positions, role, bestRoles, minAge, maxAge, minWage, maxWage, minValue, maxValue, nationality, club, clubNation, hideLoaned, sort, desc]))
+  }, [search, positions, role, bestRoles, minAge, maxAge, minWage, maxWage, minValue, maxValue, nationality, club, clubNation, hideLoaned, onlyShortlist, shortlist.keys, sort, desc]))
   /** Clic sur une colonne : la trie ; un second clic inverse le sens. */
   const sortBy = (key: ScoutSort) => {
     if (key === sort) setDesc(!(desc ?? defaultDescending(key)))
@@ -265,7 +210,12 @@ export function ScoutingPage() {
   const columnDefs: Record<ScoutColumn, { label: string; title?: string; right?: boolean; cellClass?: string; cell: (r: ScoutRow) => ReactNode }> = {
     name: {
       label: t.fmImport.nameCol, cellClass: 'font-medium',
-      cell: ({ player: p }) => <span className="inline-flex items-center gap-1.5">{p.nationality && <Flag code={p.nationality} />}{p.name}</span>,
+      cell: ({ player: p }) => (
+        <span className="inline-flex items-center gap-1.5">
+          <ShortlistStar on={shortlist.keys.has(scoutKey(p))} onToggle={() => shortlist.toggle(scoutKey(p))} />
+          {p.nationality && <Flag code={p.nationality} />}{p.name}
+        </span>
+      ),
     },
     age: { label: t.squad.col.age, right: true, cellClass: 'tabular-nums', cell: (r) => r.age },
     club: {
@@ -353,6 +303,9 @@ export function ScoutingPage() {
         <label className="flex items-center gap-2 text-xs text-slate-300">
           <Switch checked={hideLoaned} onCheckedChange={setHideLoaned} />{t.scouting.hideLoaned}
         </label>
+        <Button variant={onlyShortlist ? 'default' : 'outline'} size="sm" className="h-8" aria-pressed={onlyShortlist} onClick={() => setOnlyShortlist((v) => !v)}>
+          <StarIcon className={cn(onlyShortlist && 'fill-current')} />{t.scouting.shortlist(shortlist.keys.size)}
+        </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" className="h-8"><Columns3Icon />{t.squad.columns}</Button>
@@ -408,13 +361,19 @@ export function ScoutingPage() {
               </tbody>
             </table>
           </ColumnDnd>
+          {onlyShortlist && (
+            <p className="px-5 py-3 text-xs text-muted-foreground">
+              {shortlist.keys.size === 0 ? t.scouting.shortlistEmpty : missing > 0 ? t.scouting.shortlistMissing(missing) : null}
+            </p>
+          )}
           {result.total > result.rows.length && (
             <p className="px-5 py-3 text-xs text-muted-foreground">{t.scouting.more(result.total - result.rows.length)}</p>
           )}
         </div>
         <aside className="w-[26rem] shrink-0 overflow-y-auto border-l border-border bg-card/40">
           {selected
-            ? <ScoutDetail db={db} player={selected} today={today} roles={bestRoles} onCompare={setComparing} />
+            ? <PlayerDetail player={selectedPlayer!} roles={bestRoles} owner={clubName(db, selected.owner)} onCompare={setComparing}
+              actions={<ShortlistStar on={shortlist.keys.has(scoutKey(selected))} onToggle={() => shortlist.toggle(scoutKey(selected))} />} />
             : <EmptyState message={t.scouting.selectHint} />}
         </aside>
       </div>

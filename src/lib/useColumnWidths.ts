@@ -32,7 +32,7 @@ export function useColumnWidths(storageKey: string): ColumnWidths {
     }),
     reset: () => { setWidths({}); saveColumnWidths(storageKey, {}) },
     tableProps: (visible) => active
-      ? { className: 'table-fixed', style: { width: '100%', minWidth: visible.reduce((s, id) => s + (widths[id] ?? DEFAULT_WIDTH), 0) } }
+      ? { className: 'table-fixed', style: { width: visible.reduce((s, id) => s + (widths[id] ?? DEFAULT_WIDTH), 0) } }
       : {},
   }
 }

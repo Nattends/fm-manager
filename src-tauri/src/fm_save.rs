@@ -105,6 +105,18 @@ struct RawClub {
   teams: Vec<u32>,
 }
 
+/// Joueur d'une équipe de jeunes ou affiliée du club.
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct YouthPlayer {
+  /// 0 = équipe de jeunes du club (U19…), 1 = équipe affiliée (B, C…).
+  pub kind: u8,
+  /// Rang de l'équipe dans sa nature (0 = la première).
+  pub rank: u8,
+  #[serde(flatten)]
+  pub player: SavePlayer,
+}
+
 pub struct ParsedSave {
   players: Vec<RawPlayer>,
   /// Notes de la saison par identifiant interne (voir `season_ratings`).
@@ -532,24 +544,63 @@ impl ParsedSave {
       if !in_squad && !loaned_out {
         continue;
       }
-      let contract = p.contracts.iter().find(|c| c.team == first).or(p.contracts.first());
-      let (avg_rating, rated_matches) = self.season_rating(p);
-      out.push(SavePlayer {
-        name: p.name.clone(),
-        first_name: p.first_name.clone(),
-        last_name: p.last_name.clone(),
-        birth: p.birth,
-        nation: p.nation,
-        positions: p.positions.clone(),
-        values: p.values.clone(),
-        contract_end: contract.and_then(|c| c.end),
-        wage: contract.map_or(0, |c| c.wage),
-        value: p.value,
-        avg_rating,
-        rated_matches,
-        on_loan: loaned_out,
-        host_club: if loaned_out { host_name(p.team) } else { String::new() },
-      });
+      let host = if loaned_out { host_name(p.team) } else { String::new() };
+      out.push(self.save_player(p, first, loaned_out, host));
+    }
+    Ok(out)
+  }
+
+  fn save_player(&self, p: &RawPlayer, contract_team: u32, on_loan: bool, host_club: String) -> SavePlayer {
+    let contract = p.contracts.iter().find(|c| c.team == contract_team).or(p.contracts.first());
+    let (avg_rating, rated_matches) = self.season_rating(p);
+    SavePlayer {
+      name: p.name.clone(),
+      first_name: p.first_name.clone(),
+      last_name: p.last_name.clone(),
+      birth: p.birth,
+      nation: p.nation,
+      positions: p.positions.clone(),
+      values: p.values.clone(),
+      contract_end: contract.and_then(|c| c.end),
+      wage: contract.map_or(0, |c| c.wage),
+      value: p.value,
+      avg_rating,
+      rated_matches,
+      on_loan,
+      host_club,
+    }
+  }
+
+  /// Équipes de jeunes et équipes affiliées du club (U19, B, C…), avec leurs joueurs.
+  ///
+  /// - les équipes du club après la première (`teams[1..]`) sont les équipes de jeunes, dans l'ordre du jeu ;
+  /// - une équipe d'un autre club est affiliée (B, C…) quand au moins `MIN_AFFILIATE` joueurs y jouent avec
+  ///   le club comme premier contrat et l'équipe comme dernier : un joueur prêté garde l'équipe A en dernier contrat.
+  ///   Elles sont classées par identifiant d'équipe.
+  pub fn club_youth(&self, club_id: u32) -> Result<Vec<YouthPlayer>, String> {
+    const MIN_AFFILIATE: usize = 5;
+    let club = self.clubs.iter().find(|c| c.id == club_id).ok_or("club introuvable")?;
+    let first = *club.teams.first().ok_or("ce club n'a pas d'équipe")?;
+    let mut counts: HashMap<u32, usize> = HashMap::new();
+    for p in &self.players {
+      let affiliated = p.team != NONE
+        && !club.teams.contains(&p.team)
+        && p.contracts.first().map(|c| c.team) == Some(first)
+        && p.contracts.last().map(|c| c.team) == Some(p.team);
+      if affiliated {
+        *counts.entry(p.team).or_default() += 1;
+      }
+    }
+    let mut affiliates: Vec<u32> = counts.into_iter().filter(|&(_, n)| n >= MIN_AFFILIATE).map(|(t, _)| t).collect();
+    affiliates.sort_unstable();
+    // (équipe, nature, rang) : nature 0 = jeunes, 1 = affiliée
+    let mut teams: Vec<(u32, u8, u8)> = club.teams.iter().skip(1).enumerate().map(|(i, &t)| (t, 0, i as u8)).collect();
+    teams.extend(affiliates.iter().enumerate().map(|(i, &t)| (t, 1, i as u8)));
+    let mut out = Vec::new();
+    for p in &self.players {
+      if let Some(&(_, kind, rank)) = teams.iter().find(|(t, _, _)| *t == p.team) {
+        out.push(YouthPlayer { kind, rank, player: self.save_player(p, first, false, String::new()) });
+      }
     }
     Ok(out)
   }
@@ -683,6 +734,11 @@ mod tests {
     if let Ok(out) = std::env::var("FM_SCOUT_OUT") {
       std::fs::write(out, save.scouting_snapshot(&path, 0)).unwrap();
     }
+    let mut youth: std::collections::BTreeMap<(u8, u8), usize> = Default::default();
+    for y in save.club_youth(s.managed_club_id.unwrap()).unwrap() {
+      *youth.entry((y.kind, y.rank)).or_default() += 1;
+    }
+    println!("jeunes/affiliés (nature, rang) -> joueurs : {youth:?}");
     for p in &players {
       println!("{} né {:?} nation {} fin {:?} salaire {} £ valeur {:?} £ note {:?} ({} matchs) prêt {} {}", p.name, p.birth, p.nation, p.contract_end, p.wage, p.value, p.avg_rating, p.rated_matches, p.on_loan, p.host_club);
     }
