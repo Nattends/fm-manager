@@ -15,13 +15,15 @@ interface Fake {
   value?: number
   /** Notes de la saison : somme des notes×10 et matchs. */
   ratings?: [number, number]
+  /** Stats de la saison (FMS5) : minutes, titularisations, entrées, buts, passes D, HdM, puis 9 u16 (xG et xA ×100). */
+  stats?: number[]
   /** Familiarités brutes, dans l'ordre GK, SW, DL, DC, DR, DM, ML, MC, MR, AML, AMC, AMR, ST, WBL, WBR. */
   positions: number[]
   finishing: number
 }
 
-/** Même format que `scouting_snapshot` (src-tauri/src/fm_save.rs) ; `FMS3` = sans les notes, `FMS2` = sans la valeur non plus. */
-function encode(clubs: [string, number][], players: Fake[], magic: 'FMS2' | 'FMS3' | 'FMS4' = 'FMS4'): Uint8Array {
+/** Même format que `scouting_snapshot` (src-tauri/src/fm_save.rs) ; `FMS4` = sans les stats, `FMS3` = sans les notes, `FMS2` = sans la valeur non plus. */
+function encode(clubs: [string, number][], players: Fake[], magic: 'FMS2' | 'FMS3' | 'FMS4' | 'FMS5' = 'FMS5'): Uint8Array {
   const out: number[] = []
   const u16 = (v: number) => out.push(v & 255, (v >> 8) & 255)
   const u32 = (v: number) => out.push(v & 255, (v >>> 8) & 255, (v >>> 16) & 255, (v >>> 24) & 255)
@@ -43,7 +45,11 @@ function encode(clubs: [string, number][], players: Fake[], magic: 'FMS2' | 'FMS
     u16(181); u16(2029)
     u32(p.wage ?? 0)
     if (magic !== 'FMS2') u32(p.value ?? 0xffffffff)
-    if (magic === 'FMS4') { u16(p.ratings?.[0] ?? 0); out.push(p.ratings?.[1] ?? 0) }
+    if (magic === 'FMS4' || magic === 'FMS5') { u16(p.ratings?.[0] ?? 0); out.push(p.ratings?.[1] ?? 0) }
+    if (magic === 'FMS5') {
+      const s = p.stats ?? new Array(15).fill(0)
+      u16(s[0]); out.push(...s.slice(1, 6)); s.slice(6).forEach(u16)
+    }
     const b = new TextEncoder().encode(p.name)
     out.push(b.length, ...b)
   }
@@ -54,7 +60,8 @@ const ST = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 20, 1, 1]
 const DC = [1, 1, 1, 20, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
 const CLUBS: [string, number][] = [['Real Sociedad', 170], ['Feyenoord', 158]]
 const FAKES: Fake[] = [
-  { name: 'Mikel Oyarzábal', birthYear: 1997, nation: 170, club: 0, positions: ST, finishing: 85, wage: 37043, value: 64_427_392, ratings: [610, 9] },
+  { name: 'Mikel Oyarzábal', birthYear: 1997, nation: 170, club: 0, positions: ST, finishing: 85, wage: 37043, value: 64_427_392, ratings: [610, 9],
+    stats: [720, 8, 1, 5, 2, 1, 210, 180, 6, 4, 9, 25, 12, 431, 160] },
   { name: 'Orri Óskarsson', birthYear: 2004, nation: 148, club: 0, positions: ST, finishing: 70, wage: 42951, value: 71_604_775, ratings: [476, 7] },
   { name: 'Igor Zubeldia', birthYear: 1997, nation: 170, club: 0, positions: DC, finishing: 20, value: 29_765_456 },
   { name: 'Javi López', birthYear: 2002, nation: 170, club: 1, owner: 0, positions: DC, finishing: 25, wage: 26_640, value: 7_300_000 },
@@ -162,8 +169,17 @@ describe('base de scouting', () => {
     const { rows } = searchScouts(db, { ...base, sort: 'avgRating' }, db.gameDate!)
     expect(rows.slice(0, 2).map((r) => r.player.name)).toEqual(['Orri Óskarsson', 'Mikel Oyarzábal'])
     expect(scoutAsPlayer(db.players[0], db, db.gameDate!)).toMatchObject({ avgRating: 6.78, ratedMatches: 9 })
-    // base de la v0.15 (FMS3) : pas de notes
+    // base de la v0.19 (FMS4) : notes sans stats ; v0.15 (FMS3) : pas de notes
+    expect(decodeScouting(encode(CLUBS, FAKES, 'FMS4'))!.players[0]).toMatchObject({ avgRating: 6.78, stats: null })
     expect(decodeScouting(encode(CLUBS, FAKES, 'FMS3'))!.players.every((p) => p.avgRating === null)).toBe(true)
+  })
+
+  it('lit les stats de la saison', () => {
+    expect(db.players[0].stats).toEqual({
+      minutes: 720, starts: 8, subs: 1, goals: 5, assists: 2, pom: 1, passes: 210, passesDone: 180, tackles: 6, tacklesWon: 4,
+      dribbles: 9, shots: 25, shotsOnTarget: 12, xg: 4.31, xa: 1.6,
+    })
+    expect(db.players[2].stats).toBeNull()
   })
 
   it('lit encore les bases au format précédent (sans valeur)', () => {

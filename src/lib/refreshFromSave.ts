@@ -8,7 +8,9 @@ export interface RefreshResult {
   clubName: string
   created: number
   updated: number
-  /** Joueurs de l'application qui ne sont plus dans l'effectif de la sauvegarde (laissés tels quels). */
+  /** Joueurs de l'application supprimés car ils ne sont plus dans l'effectif de la sauvegarde. */
+  removed: number
+  /** Joueurs de l'application qui ne sont plus dans l'effectif de la sauvegarde et ont été conservés. */
   missing: number
   /** Joueurs de la base de scouting. */
   scouted: number
@@ -23,6 +25,8 @@ export async function refreshFromSave(
   players: Player[],
   savePlayer: (p: NewPlayer) => Promise<unknown>,
   pick: (defaultPath?: string) => Promise<string | null>,
+  removePlayer: (id: number) => Promise<void>,
+  confirmRemoval: (gone: Player[]) => Promise<boolean>,
 ): Promise<RefreshResult | null> {
   const link = getSaveLink(club.id)
   const path = link?.path ?? (await pick(lastSavePath()))
@@ -32,6 +36,12 @@ export async function refreshFromSave(
   if (!saveClub) throw new Error('club introuvable dans la sauvegarde')
   const plan = planSaveImport(await savePlayers(path, saveClub.id), players, club, summary.gameDate ?? todayGameDate())
   for (const a of plan.actions) await savePlayer(a.player)
+  // Joueurs partis (vendus, fin de contrat…) : supprimés après confirmation, sinon laissés tels quels.
+  let removed = 0
+  if (plan.missing.length > 0 && (await confirmRemoval(plan.missing))) {
+    for (const p of plan.missing) await removePlayer(p.id)
+    removed = plan.missing.length
+  }
   setSaveLink(club.id, { path, saveClubId: saveClub.id })
   const scouted = await refreshScouting(path)
   return {
@@ -39,7 +49,8 @@ export async function refreshFromSave(
     clubName: saveClub.shortName || saveClub.name,
     created: plan.actions.filter((a) => a.kind === 'create').length,
     updated: plan.actions.filter((a) => a.kind === 'update').length,
-    missing: plan.missing.length,
+    removed,
+    missing: plan.missing.length - removed,
     scouted,
   }
 }

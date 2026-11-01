@@ -119,8 +119,8 @@ pub struct YouthPlayer {
 
 pub struct ParsedSave {
   players: Vec<RawPlayer>,
-  /// Notes de la saison par identifiant interne (voir `season_ratings`).
-  ratings: HashMap<u32, (u32, u32)>,
+  /// Stats de la saison par identifiant interne (voir `season_stats`).
+  stats: HashMap<u32, SeasonStats>,
   clubs: Vec<RawClub>,
   manager: String,
   managed_club_id: Option<u32>,
@@ -308,7 +308,7 @@ fn parse_players(d: &[u8], names: &[Vec<String>]) -> Vec<RawPlayer> {
 }
 
 /// Bloc des 16 dernières notes d'une fiche de stats : `10`, 16 emplacements de 3 octets (vides `00 00 00` en tête,
-/// puis `[note×10][compétition][06]`), `01`, puis l'identifiant de la fiche suivante.
+/// puis `[note×10][compétition][saison]`, saison 06 en 2026, 07 en 2027…), `01`, puis l'identifiant de la fiche suivante.
 fn is_rating_block(d: &[u8], t: usize) -> bool {
   if t + 54 > d.len() || d[t] != 0x10 || d[t + 49] != 1 {
     return false;
@@ -322,7 +322,7 @@ fn is_rating_block(d: &[u8], t: usize) -> bool {
       }
       continue;
     }
-    if d[a + 2] != 6 || !(10..=100).contains(&d[a]) {
+    if !(4..=12).contains(&d[a + 2]) || !(10..=100).contains(&d[a]) {
       return false;
     }
     started = true;
@@ -348,11 +348,109 @@ fn season_summary(d: &[u8], t: usize) -> (u32, u32) {
   (sum, apps)
 }
 
-/// Notes de la saison par identifiant interne : (somme des notes×10, matchs notés).
+/// Stats de la saison en cours, toutes compétitions (emplacement « total » d'une fiche de stats).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct SeasonStats {
+  /// Somme des notes×10 et matchs notés.
+  pub rating_sum: u32,
+  pub rated: u32,
+  pub minutes: u16,
+  pub starts: u8,
+  pub subs: u8,
+  pub goals: u8,
+  pub assists: u8,
+  /// Titres d'homme du match.
+  pub pom: u8,
+  pub passes: u16,
+  pub passes_done: u16,
+  pub tackles: u16,
+  pub tackles_won: u16,
+  pub dribbles: u16,
+  pub shots: u16,
+  pub shots_on_target: u16,
+  /// Buts et passes décisives attendus ×100.
+  pub xg: u16,
+  pub xa: u16,
+}
+
+/// Emplacement de stats `01 07` puis, après ces deux octets : somme des notes×10 u16, minutes u16, titularisations,
+/// entrées, matchs notés, buts, passes D (u8), homme du match (+12), puis des u16 : passes tentées (+25) et réussies (+27),
+/// tacles tentés (+29) et gagnés (+31), dribbles (+37), tirs (+43) et cadrés (+45), xG×100 (+89), xA×100 (+91).
+/// Établi sur 21 joueurs d'une capture du jeu ; Σ xG = Σ buts à 0,3 % près sur toute la base.
+const SLOT_LEN: usize = 155;
+
+fn read_slot(d: &[u8], s: usize) -> SeasonStats {
+  let b = s + 2;
+  SeasonStats {
+    rating_sum: u32::from(u16_at(d, b)),
+    rated: u32::from(d[b + 6]),
+    minutes: u16_at(d, b + 2),
+    starts: d[b + 4],
+    subs: d[b + 5],
+    goals: d[b + 7],
+    assists: d[b + 8],
+    pom: d[b + 12],
+    passes: u16_at(d, b + 25),
+    passes_done: u16_at(d, b + 27),
+    tackles: u16_at(d, b + 29),
+    tackles_won: u16_at(d, b + 31),
+    dribbles: u16_at(d, b + 37),
+    shots: u16_at(d, b + 43),
+    shots_on_target: u16_at(d, b + 45),
+    xg: u16_at(d, b + 89),
+    xa: u16_at(d, b + 91),
+  }
+}
+
+/// Emplacement « total de la saison » d'une fiche (entre `from` et `to`).
+///
+/// Une fiche aligne des emplacements `01 07` de ~155 octets : un par compétition, puis le total, parfois suivis d'autres
+/// (sélection, saison passée…), et parfois glissés entre les compétitions. Le total est le premier emplacement égal
+/// (somme des notes, minutes, titularisations, entrées) à la somme de certains des emplacements qui le précèdent ;
+/// une fiche à un seul emplacement est son propre total.
+fn season_total(d: &[u8], from: usize, to: usize) -> Option<SeasonStats> {
+  let mut slots: Vec<usize> = Vec::new();
+  let mut j = from;
+  while j + 2 + SLOT_LEN <= to.min(d.len()) {
+    // les autres `01 07` sont des données : un emplacement fait au moins 150 octets
+    if d[j] == 1 && d[j + 1] == 7 && slots.last().map_or(true, |&l| j - l >= 150) {
+      slots.push(j);
+    }
+    j += 1;
+  }
+  let key = |s: usize| [u32::from(u16_at(d, s + 2)), u32::from(u16_at(d, s + 4)), u32::from(d[s + 6]), u32::from(d[s + 7])];
+  // au plus 10 emplacements avant le total (2^10 sommes à essayer)
+  for t in 1..slots.len().min(11) {
+    let kt = key(slots[t]);
+    if kt[1] == 0 {
+      continue;
+    }
+    let keys: Vec<[u32; 4]> = slots[..t].iter().map(|&s| key(s)).collect();
+    for mask in 1u32..(1 << t) {
+      let mut acc = [0u32; 4];
+      for (i, k) in keys.iter().enumerate() {
+        if mask & (1 << i) != 0 {
+          for (a, v) in acc.iter_mut().zip(k) {
+            *a += v;
+          }
+        }
+      }
+      if acc == kt {
+        return Some(read_slot(d, slots[t]));
+      }
+    }
+  }
+  match slots.as_slice() {
+    [only] if u16_at(d, only + 4) > 0 => Some(read_slot(d, *only)),
+    _ => None,
+  }
+}
+
+/// Stats de la saison par identifiant interne.
 /// Les fiches de stats se suivent par identifiant ; chaque bloc de notes est suivi de `01` et de l'identifiant de la fiche
-/// d'après. Le bloc du joueur X est le premier bloc qui suit le repère « bloc, 01, X+1 » (établi sur 20 joueurs d'une partie :
-/// moyenne du jeu retrouvée à ±0,03, les notes étant arrondies au dixième).
-fn season_ratings(d: &[u8]) -> HashMap<u32, (u32, u32)> {
+/// d'après. La fiche du joueur X suit le repère « bloc, 01, X+1 » jusqu'au bloc de notes suivant (établi sur 21 joueurs
+/// d'une partie). Sans emplacement total reconnu, seule la note vient du résumé placé avant le bloc suivant.
+fn season_stats(d: &[u8]) -> HashMap<u32, SeasonStats> {
   let mut blocks: Vec<(usize, u32)> = Vec::new();
   let mut t = 0;
   while t + 54 <= d.len() {
@@ -363,17 +461,20 @@ fn season_ratings(d: &[u8]) -> HashMap<u32, (u32, u32)> {
       t += 1;
     }
   }
-  let mut out: HashMap<u32, (u32, u32)> = HashMap::new();
+  let mut out: HashMap<u32, SeasonStats> = HashMap::new();
   for w in blocks.windows(2) {
-    let ((ta, na), (tb, nb)) = (w[0], w[1]);
-    // deux fiches voisines : identifiants croissants et proches
-    if tb - ta > 40_000 || nb <= na || nb - na > 64 || na == 0 {
+    let ((ta, na), (tb, _)) = (w[0], w[1]);
+    // deux fiches voisines (les identifiants ne sont pas toujours croissants : seule la distance compte)
+    if tb - ta > 40_000 || na == 0 {
       continue;
     }
-    let (sum, apps) = season_summary(d, tb);
-    let entry = out.entry(na - 1).or_insert((0, 0));
-    if entry.1 == 0 {
-      *entry = (sum, apps);
+    let stats = season_total(d, ta + 54, tb).unwrap_or_else(|| {
+      let (rating_sum, rated) = season_summary(d, tb);
+      SeasonStats { rating_sum, rated, ..Default::default() }
+    });
+    let entry = out.entry(na - 1).or_default();
+    if entry.rated == 0 && entry.minutes == 0 {
+      *entry = stats;
     }
   }
   out
@@ -482,15 +583,15 @@ pub fn parse(file: &[u8]) -> Result<ParsedSave, String> {
   let players = parse_players(&d, &names);
   let clubs = parse_clubs(&d);
   let (manager, managed_club_id, game_date) = parse_header(&d, &clubs);
-  let ratings = season_ratings(&d);
-  Ok(ParsedSave { players, ratings, clubs, manager, managed_club_id, game_date })
+  let stats = season_stats(&d);
+  Ok(ParsedSave { players, stats, clubs, manager, managed_club_id, game_date })
 }
 
 impl ParsedSave {
   /// Note moyenne de la saison (somme÷matchs, notes au dixième) et nombre de matchs notés.
   fn season_rating(&self, p: &RawPlayer) -> (Option<f32>, u32) {
-    match self.ratings.get(&p.id) {
-      Some(&(sum, apps)) if apps > 0 => (Some(sum as f32 / apps as f32 / 10.0), apps),
+    match self.stats.get(&p.id) {
+      Some(s) if s.rated > 0 => (Some(s.rating_sum as f32 / s.rated as f32 / 10.0), s.rated),
       _ => (None, 0),
     }
   }
@@ -607,11 +708,13 @@ impl ParsedSave {
 
   /// Base de scouting : tous les joueurs, en binaire compact (décodé par src/domain/scouting.ts).
   ///
-  /// `FMS4`, horodatage u64 (ms), chemin [u16 + texte], date du jeu (jour u16, année u16, 0 si inconnue),
+  /// `FMS5`, horodatage u64 (ms), chemin [u16 + texte], date du jeu (jour u16, année u16, 0 si inconnue),
   /// clubs [u32 n] × (nation u16, nom [u16 + texte]), joueurs [u32 n] × (15 postes, 54 valeurs, naissance jour/année u16,
   /// nation u16, club u32, club propriétaire u32 (FFFFFFFF si aucun), fin de contrat jour/année u16, salaire hebdomadaire u32 (£),
-  /// valeur u32 (£, FFFFFFFF si inconnue), somme des notes×10 de la saison u16, matchs notés u8, nom [u8 + texte]).
-  /// `FMS3` : sans les notes ; `FMS2` : sans la valeur non plus.
+  /// valeur u32 (£, FFFFFFFF si inconnue), somme des notes×10 de la saison u16, matchs notés u8,
+  /// stats de la saison : minutes u16, titularisations, entrées, buts, passes D, homme du match (u8), passes tentées,
+  /// réussies, tacles tentés, gagnés, dribbles, tirs, cadrés, xG×100, xA×100 (u16), nom [u8 + texte]).
+  /// `FMS4` : sans les stats ; `FMS3` : sans les notes non plus ; `FMS2` : sans la valeur non plus.
   pub fn scouting_snapshot(&self, path: &str, refreshed_at: u64) -> Vec<u8> {
     fn text16(out: &mut Vec<u8>, s: &str) {
       let b = &s.as_bytes()[..s.len().min(u16::MAX as usize)];
@@ -619,8 +722,8 @@ impl ParsedSave {
       out.extend_from_slice(b);
     }
     let owner = self.team_owner();
-    let mut out = Vec::with_capacity(self.players.len() * 110 + self.clubs.len() * 24);
-    out.extend_from_slice(b"FMS4");
+    let mut out = Vec::with_capacity(self.players.len() * 136 + self.clubs.len() * 24);
+    out.extend_from_slice(b"FMS5");
     out.extend_from_slice(&refreshed_at.to_le_bytes());
     text16(&mut out, path);
     let date = self.game_date.unwrap_or(GameDate { day: 0, year: 0 });
@@ -651,10 +754,16 @@ impl ParsedSave {
       out.extend_from_slice(&contract.map_or(0, |c| c.wage).to_le_bytes());
       out.extend_from_slice(&p.value.unwrap_or(NONE).to_le_bytes());
       // notes de la saison : somme×10 (u16) et matchs (u8), 0 si aucune
-      let (sum, apps) = self.ratings.get(&p.id).copied().unwrap_or((0, 0));
-      let (sum, apps) = if apps > 255 || sum > u32::from(u16::MAX) { (0, 0) } else { (sum, apps) };
+      let s = self.stats.get(&p.id).copied().unwrap_or_default();
+      let (sum, apps) = if s.rated > 255 || s.rating_sum > u32::from(u16::MAX) { (0, 0) } else { (s.rating_sum, s.rated) };
       out.extend_from_slice(&(sum as u16).to_le_bytes());
       out.push(apps as u8);
+      // stats détaillées de la saison (FMS5)
+      out.extend_from_slice(&s.minutes.to_le_bytes());
+      out.extend_from_slice(&[s.starts, s.subs, s.goals, s.assists, s.pom]);
+      for v in [s.passes, s.passes_done, s.tackles, s.tackles_won, s.dribbles, s.shots, s.shots_on_target, s.xg, s.xa] {
+        out.extend_from_slice(&v.to_le_bytes());
+      }
       let name = &p.name.as_bytes()[..p.name.len().min(255)];
       out.push(name.len() as u8);
       out.extend_from_slice(name);
@@ -744,47 +853,80 @@ mod tests {
     }
   }
 
-  /// Deux fiches de stats voisines : la note du joueur X est le bloc qui suit le repère « 01 X+1 ».
-  #[test]
-  fn reads_season_ratings() {
-    fn block(d: &mut Vec<u8>, entries: &[(u16, u8)], notes: &[u8], next: u32) {
-      for &(sum, apps) in entries {
-        d.extend_from_slice(&[2]);
-        d.extend_from_slice(&sum.to_le_bytes());
-        d.extend_from_slice(&[12, apps, 1, 1, apps]);
-      }
-      d.push(0x10);
-      for _ in notes.len()..16 {
-        d.extend_from_slice(&[0, 0, 0]);
-      }
-      for &n in notes {
-        d.extend_from_slice(&[n, 0x12, 6]);
-      }
-      d.push(1);
-      d.extend_from_slice(&next.to_le_bytes());
-      d.extend_from_slice(&[0xff; 4]);
-      d.extend_from_slice(&[0; 40]);
+  /// Fiche de stats : emplacements `01 07` (voir `read_slot`), résumé de saison, bloc de notes, `01` et fiche suivante.
+  fn stats_record(d: &mut Vec<u8>, slots: &[[u16; 6]], entries: &[(u16, u8)], notes: &[u8], next: u32) {
+    for &[sum, minutes, starts, subs, rated, goals] in slots {
+      let mut s = vec![0u8; 155];
+      s[0..2].copy_from_slice(&sum.to_le_bytes());
+      s[2..4].copy_from_slice(&minutes.to_le_bytes());
+      s[4] = starts as u8;
+      s[5] = subs as u8;
+      s[6] = rated as u8;
+      s[7] = goals as u8;
+      s[89..91].copy_from_slice(&(goals * 90).to_le_bytes());
+      d.extend_from_slice(&[1, 7]);
+      d.extend_from_slice(&s);
     }
-    let mut d = vec![0u8; 16];
-    block(&mut d, &[], &[], 42566);
-    // Oyarzábal (id 42565) : 538/8 en liga + 72/1 en coupe = 6,778
-    block(&mut d, &[(538, 8), (72, 1)], &[72, 64, 62, 78, 67, 65, 66, 68, 68], 42567);
-    block(&mut d, &[], &[70], 42568);
-    let r = season_ratings(&d);
-    assert_eq!(r.get(&42565), Some(&(610, 9)));
-    assert_eq!(r.get(&42566), Some(&(0, 0)));
+    for &(sum, apps) in entries {
+      d.extend_from_slice(&[2]);
+      d.extend_from_slice(&sum.to_le_bytes());
+      d.extend_from_slice(&[12, apps, 1, 1, apps]);
+    }
+    d.push(0x10);
+    for _ in notes.len()..16 {
+      d.extend_from_slice(&[0, 0, 0]);
+    }
+    for &n in notes {
+      d.extend_from_slice(&[n, 0x12, 7]);
+    }
+    d.push(1);
+    d.extend_from_slice(&next.to_le_bytes());
+    d.extend_from_slice(&[0xff; 4]);
+    d.extend_from_slice(&[0; 40]);
   }
 
-  /// Sur une sauvegarde déjà décompressée : `FM_RAW=save.bin FM_IDS=42565,33445 cargo test --release season_ratings_raw -- --ignored --nocapture`
+  /// La fiche du joueur X suit le repère « 01 X+1 » ; sans emplacement, la note vient du résumé de saison.
+  #[test]
+  fn reads_season_ratings() {
+    let mut d = vec![0u8; 16];
+    stats_record(&mut d, &[], &[], &[], 42566);
+    // Oyarzábal (id 42565) : 538/8 en liga + 72/1 en coupe = 6,778
+    stats_record(&mut d, &[], &[(538, 8), (72, 1)], &[72, 64, 62, 78, 67, 65, 66, 68, 68], 42567);
+    stats_record(&mut d, &[], &[], &[70], 42568);
+    let r = season_stats(&d);
+    assert_eq!((r[&42565].rating_sum, r[&42565].rated), (610, 9));
+    assert_eq!(r[&42566].rated, 0);
+  }
+
+  /// Emplacements : sélection, liga, coupe, total (= liga + coupe), saison passée.
+  #[test]
+  fn picks_season_total_slot() {
+    let mut d = vec![0u8; 16];
+    stats_record(&mut d, &[], &[], &[], 10250);
+    let slots = [[135, 180, 2, 0, 2, 0], [1269, 1007, 7, 19, 19, 6], [148, 57, 1, 1, 2, 0], [1417, 1064, 8, 20, 21, 6], [403, 149, 0, 7, 6, 1]];
+    stats_record(&mut d, &slots, &[(1417, 21)], &[67, 70], 10251);
+    // un seul emplacement : c'est le total
+    stats_record(&mut d, &[[1388, 1710, 19, 0, 19, 4]], &[], &[73], 10252);
+    // total = liga + coupe, avec un emplacement étranger glissé entre elles et le total
+    let kubo = [[62, 90, 1, 0, 1, 0], [925, 820, 9, 11, 14, 1], [341, 409, 4, 2, 5, 0], [841, 585, 3, 9, 12, 4], [1266, 1229, 13, 13, 19, 1]];
+    stats_record(&mut d, &kubo, &[], &[66], 10253);
+    stats_record(&mut d, &[], &[], &[70], 10254);
+    let r = season_stats(&d);
+    let kone = r[&10249];
+    assert_eq!((kone.minutes, kone.starts, kone.subs, kone.goals, kone.rated, kone.rating_sum, kone.xg), (1064, 8, 20, 6, 21, 1417, 540));
+    assert_eq!((r[&10250].starts, r[&10250].goals), (19, 4));
+    assert_eq!((r[&10251].starts, r[&10251].subs, r[&10251].rated), (13, 13, 19));
+  }
+
+  /// Sur une sauvegarde déjà décompressée : `FM_RAW=save.bin FM_IDS=42565,33445 cargo test --release season_stats_raw -- --ignored --nocapture`
   #[test]
   #[ignore]
-  fn season_ratings_raw() {
+  fn season_stats_raw() {
     let d = std::fs::read(std::env::var("FM_RAW").expect("FM_RAW")).unwrap();
-    let r = season_ratings(&d);
-    println!("{} joueurs notés", r.values().filter(|v| v.1 > 0).count());
+    let r = season_stats(&d);
+    println!("{} joueurs notés, {} avec minutes", r.values().filter(|v| v.rated > 0).count(), r.values().filter(|v| v.minutes > 0).count());
     for id in std::env::var("FM_IDS").unwrap_or_default().split(',').filter_map(|s| s.parse::<u32>().ok()) {
-      let (sum, apps) = r.get(&id).copied().unwrap_or((0, 0));
-      println!("{id}: {sum}/{apps} = {:.3}", if apps > 0 { sum as f32 / apps as f32 / 10.0 } else { 0.0 });
+      println!("{id}: {:?}", r.get(&id));
     }
   }
 

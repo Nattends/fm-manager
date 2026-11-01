@@ -70,11 +70,13 @@ export function SettingsPage() {
         if (!path) return
         setSaveLink(activeClub.id, { path, saveClubId: null })
       }
-      const r = await refreshFromSave(activeClub, players, savePlayer, pickSave)
+      const r = await refreshFromSave(activeClub, players, savePlayer, pickSave, deletePlayer,
+        (gone) => askConfirm(t.settings.refreshRemoveConfirm(gone.map((p) => p.name).join('\n'), gone.length)))
       setSaveLinkState(getSaveLink(activeClub.id))
       if (!r) return
-      toast.success(t.settings.refreshDone(r.clubName, r.created, r.updated, r.scouted),
-        r.missing > 0 ? { description: t.settings.refreshMissing(r.missing) } : undefined)
+      const notes = [r.removed > 0 && t.settings.refreshRemoved(r.removed), r.missing > 0 && t.settings.refreshMissing(r.missing)]
+        .filter(Boolean).join(' ')
+      toast.success(t.settings.refreshDone(r.clubName, r.created, r.updated, r.scouted), notes ? { description: notes } : undefined)
     } catch (e) {
       toast.error(t.settings.refreshFailed(String(e)))
     } finally {

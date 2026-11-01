@@ -40,6 +40,29 @@ export interface ScoutPlayer {
   avgRating: number | null
   /** Matchs notés de la saison. */
   ratedMatches: number
+  /** Stats détaillées de la saison (toutes compétitions), null sans minute jouée ou base lue avant la v0.20. */
+  stats: SeasonStats | null
+}
+
+/** Stats de la saison en cours, toutes compétitions officielles. */
+export interface SeasonStats {
+  minutes: number
+  starts: number
+  subs: number
+  goals: number
+  assists: number
+  /** Titres d'homme du match. */
+  pom: number
+  passes: number
+  passesDone: number
+  tackles: number
+  tacklesWon: number
+  dribbles: number
+  shots: number
+  shotsOnTarget: number
+  /** Buts et passes décisives attendus. */
+  xg: number
+  xa: number
 }
 
 export interface ScoutDb {
@@ -52,9 +75,10 @@ export interface ScoutDb {
 
 /**
  * FMS3 ajoute la valeur de transfert après le salaire, FMS4 la note moyenne de la saison (somme des notes×10 u16, matchs u8)
- * après la valeur ; FMS2 (bases plus anciennes) n'a ni l'une ni l'autre.
+ * après la valeur, FMS5 les stats de la saison après la note (minutes u16, 5 × u8, 9 × u16 : voir SeasonStats) ;
+ * FMS2 (bases plus anciennes) n'a rien de tout ça.
  */
-const MAGICS = ['FMS2', 'FMS3', 'FMS4']
+const MAGICS = ['FMS2', 'FMS3', 'FMS4', 'FMS5']
 const NONE = 0xffffffff
 
 /** Décode la base enregistrée ; null si elle est vide ou d'un autre format. */
@@ -62,7 +86,8 @@ export function decodeScouting(bytes: Uint8Array): ScoutDb | null {
   const magic = bytes.length >= 8 ? String.fromCharCode(...bytes.subarray(0, 4)) : ''
   if (!MAGICS.includes(magic)) return null
   const withValue = magic !== 'FMS2'
-  const withRating = magic === 'FMS4'
+  const withRating = magic === 'FMS4' || magic === 'FMS5'
+  const withStats = magic === 'FMS5'
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   const utf8 = new TextDecoder()
   let p = 4
@@ -94,13 +119,21 @@ export function decodeScouting(bytes: Uint8Array): ScoutDb | null {
     const rawValue = withValue ? u32() : NONE
     const ratingSum = withRating ? u16() : 0
     const ratedMatches = withRating ? bytes[p++] : 0
+    let stats: SeasonStats | null = null
+    if (withStats) {
+      const minutes = u16()
+      const [starts, subs, goals, assists, pom] = bytes.subarray(p, p + 5)
+      p += 5
+      const [passes, passesDone, tackles, tacklesWon, dribbles, shots, shotsOnTarget, xg, xa] = Array.from({ length: 9 }, u16)
+      if (minutes) stats = { minutes, starts, subs, goals, assists, pom, passes, passesDone, tackles, tacklesWon, dribbles, shots, shotsOnTarget, xg: xg / 100, xa: xa / 100 }
+    }
     const name = text(bytes[p++])
     players.push({
       index: i, name, birth, nationality, positions, values,
       club: club === NONE ? -1 : club, owner: owner === NONE ? -1 : owner, contractEnd, wage,
       value: valueEuros(rawValue === NONE ? null : rawValue),
       avgRating: ratedMatches ? roundRating(ratingSum / ratedMatches / 10) : null,
-      ratedMatches,
+      ratedMatches, stats,
     })
   }
   return { refreshedAt, savePath, gameDate, clubs, players }
@@ -294,6 +327,19 @@ function bestAll(db: ScoutDb, roles: RoleDefinition[], compiled: CompiledRole[])
     bestCache.set(db, entry)
   }
   return entry
+}
+
+/** Meilleure note de chaque joueur de la base (par `index`) et rôle de cette note (-1 = aucun), gardées en mémoire par liste de rôles. */
+export function bestScores(db: ScoutDb, roles: RoleDefinition[]): { scores: Float32Array; best: Int16Array } {
+  const entry = bestCache.get(db)
+  return entry?.roles === roles ? entry : bestAll(db, roles, roles.map(compileRole))
+}
+
+/** Note rapide d'un rôle, avec la familiarité au poste donné (sinon au meilleur poste du rôle), pour noter toute la base. */
+export function scoutScorer(role: RoleDefinition, position?: Position): (p: ScoutPlayer) => number {
+  const c = compileRole(role)
+  if (position) c.positions = [POSITION_INDEX[position]]
+  return (p) => fastScore(p, c)
 }
 
 /** Montant entre deux bornes facultatives ; un montant inconnu ne passe que s'il n'y a aucune borne. */

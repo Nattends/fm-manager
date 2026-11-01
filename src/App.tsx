@@ -9,6 +9,7 @@ import { ClubSwitcher } from '@/components/ClubSwitcher'
 import { offerUpdate } from '@/components/updateToast'
 import { useI18n } from './i18n'
 import { LANGUAGES } from './i18n/languages'
+import { MoneyballPage } from './pages/MoneyballPage'
 import { RolesPage } from './pages/RolesPage'
 import { ScoutingPage } from './pages/ScoutingPage'
 import { SettingsPage } from './pages/SettingsPage'
@@ -23,6 +24,7 @@ const PAGES = {
   tactic: TacticPage,
   roles: RolesPage,
   scouting: ScoutingPage,
+  moneyball: MoneyballPage,
   settings: SettingsPage,
 } as const
 
