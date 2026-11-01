@@ -5,7 +5,7 @@ import {
 import {
   CheckIcon, ColumnsIcon, CopyIcon, EraserIcon, GripVerticalIcon, Maximize2Icon, Minimize2Icon,
   PanelBottomCloseIcon, PanelBottomOpenIcon, PanelRightCloseIcon, PanelRightOpenIcon,
-  Loader2Icon, SparklesIcon, Trash2Icon, Undo2Icon, WandIcon, XIcon,
+  Loader2Icon, LockIcon, LockOpenIcon, SparklesIcon, Trash2Icon, Undo2Icon, WandIcon, XIcon,
 } from 'lucide-react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
@@ -29,7 +29,7 @@ import { LINE_COLORS, attrColor, lineColorOf, scoreColor, scoreText } from '@/co
 import { CUSTOM_FORMATION_ID, FORMATIONS, getFormation, type Formation } from '@/domain/formations'
 import {
   bestEleven, benchPlayer, canPlace, clearEleven, computeLineup, fillEmptySlots, copyInPossession, keyAttributesAt, rateAtSlot, defaultTacticSlots, isAvailable, layoutName, mergePhase, moveSlot,
-  patchShape, phaseSlots, placePlayer, summarizeLineup,
+  patchShape, phaseSlots, placePlayer, setAllPinned, setPinned, summarizeLineup,
   type Assignment, type Lineup, type LineupSlot, type LineupSummary, type PitchLine,
 } from '@/domain/lineup'
 import { PITCH_COLS, PITCH_ROWS, cellCenter, positionAt } from '@/domain/pitch'
@@ -174,7 +174,8 @@ export function TacticPage() {
     update({ slots: draft.slots.map((s) => (s.slotId === slotId ? { ...s, ...patch } : s)) })
   const updateShape = (ph: Phase, slotId: string, patch: { roleId?: string }) =>
     update({ slots: patchShape(draft.slots, ph, slotId, patch) })
-  const updateView = (ph: Phase, next: TacticSlot[]) => update({ slots: mergePhase(draft.slots, ph, next) })
+  const updateView = (ph: Phase, next: TacticSlot[]) => update({ slots: mergePhase(draft.slots, ph, next, roles) })
+  const allPinned = draft.slots.every((s) => s.pinned)
 
   const onDragStart = (e: DragStartEvent) => {
     const data = e.active.data.current as DragData
@@ -335,6 +336,10 @@ export function TacticPage() {
               <CopyIcon /><span className={TOOL_LABEL}>{t.tactic.copyFromIp}</span>
             </Button>
           )}
+          <Button variant={allPinned ? 'secondary' : 'ghost'} size="sm" onClick={() => update({ slots: setAllPinned(draft.slots, !allPinned, roles) })}
+            title={allPinned ? t.tactic.unpinAllTitle : t.tactic.pinAllTitle}>
+            {allPinned ? <LockIcon /> : <LockOpenIcon />}<span className={TOOL_LABEL}>{allPinned ? t.tactic.unpinAll : t.tactic.pinAll}</span>
+          </Button>
           <Button variant="outline" size="sm" onClick={fillXi} disabled={emptySlots === 0} title={t.tactic.fillTitle}><WandIcon /><span className={TOOL_LABEL}>{t.tactic.fill}</span></Button>
           <Button variant="outline" size="sm" onClick={bestXi} title={t.tactic.bestTitle}><SparklesIcon /><span className={TOOL_LABEL}>{t.tactic.best}</span></Button>
           <Button variant="ghost" size="sm" onClick={clearXi} title={t.tactic.resetTitle}><EraserIcon /><span className={TOOL_LABEL}>{t.tactic.reset}</span></Button>
@@ -350,6 +355,7 @@ export function TacticPage() {
                 movingId={dragged?.kind === 'card' && dragged.phase === ph ? dragged.slot.slot.id : null}
                 acceptsPlayers={dragged?.kind !== 'card'}
                 onRole={(slotId, roleId) => updateShape(ph, slotId, { roleId })}
+                onPin={(slotId, pinned) => update({ slots: setPinned(draft.slots, slotId, pinned, roles) })}
                 onRemove={(s) => updateSlot(s.slot.id, { lockedPlayerId: null })}
                 onOpen={setOpenId} />
             ))}
@@ -670,7 +676,7 @@ function BackupsList({ lineup, onOpen }: { lineup: Lineup; onOpen: (id: number) 
 }
 
 /** Un terrain (une phase de jeu) : marquages, cartes de poste et cases de dépôt pendant un déplacement. */
-function PitchView({ phase, lineup, view, roles, starterIds, big, label, movingId, acceptsPlayers, onRole, onRemove, onOpen }: {
+function PitchView({ phase, lineup, view, roles, starterIds, big, label, movingId, acceptsPlayers, onRole, onPin, onRemove, onOpen }: {
   phase: Phase
   lineup: Lineup
   /** Postes vus dans cette phase. */
@@ -684,6 +690,7 @@ function PitchView({ phase, lineup, view, roles, starterIds, big, label, movingI
   movingId: string | null
   acceptsPlayers: boolean
   onRole: (slotId: string, roleId: string) => void
+  onPin: (slotId: string, pinned: boolean) => void
   onRemove: (slot: LineupSlot) => void
   onOpen: (playerId: number) => void
 }) {
@@ -720,6 +727,7 @@ function PitchView({ phase, lineup, view, roles, starterIds, big, label, movingI
             <SlotCard key={s.slot.id} phase={phase} slot={s} roles={roles} starterIds={starterIds} big={big}
               acceptsPlayers={acceptsPlayers}
               onRole={(roleId) => onRole(s.slot.id, roleId)}
+              onPin={() => onPin(s.slot.id, !s.tacticSlot.pinned)}
               onRemove={() => onRemove(s)}
               onOpen={onOpen} />
           ))}
@@ -792,7 +800,7 @@ function cardFont(big: boolean): string {
   return `clamp(9px, min(1.75cqh, 2.3cqw), ${big ? 17 : 14}px)`
 }
 
-function SlotCard({ phase, slot, roles, starterIds, big, acceptsPlayers, onRole, onRemove, onOpen }: {
+function SlotCard({ phase, slot, roles, starterIds, big, acceptsPlayers, onRole, onPin, onRemove, onOpen }: {
   phase: Phase
   slot: LineupSlot
   roles: RoleDefinition[]
@@ -802,6 +810,8 @@ function SlotCard({ phase, slot, roles, starterIds, big, acceptsPlayers, onRole,
   /** Faux pendant le déplacement d'une carte : seules les cases de la grille sont des cibles. */
   acceptsPlayers: boolean
   onRole: (id: string) => void
+  /** Verrouille / déverrouille le poste (même case avec et sans ballon). */
+  onPin: () => void
   /** Retire le titulaire du poste (sans l'écarter). */
   onRemove: () => void
   onOpen: (playerId: number) => void
@@ -844,6 +854,12 @@ function SlotCard({ phase, slot, roles, starterIds, big, acceptsPlayers, onRole,
         </span>
         <RolePicker roles={roles} value={slot.shape.roleId} current={slot.role} position={position} phase={phase} player={slot.starter?.player} onChange={onRole}
           className={cn('h-[1.7em] flex-1 font-medium text-current hover:bg-black/20', NARROW.role)} />
+        <button onClick={onPin} onPointerDown={(e) => e.stopPropagation()}
+          title={slot.tacticSlot.pinned ? t.tactic.unpinTitle : t.tactic.pinTitle}
+          aria-label={slot.tacticSlot.pinned ? t.tactic.unpinTitle : t.tactic.pinTitle}
+          className={cn('flex h-[1.7em] shrink-0 items-center rounded px-[0.3em] hover:bg-black/40', slot.tacticSlot.pinned ? 'bg-black/30' : 'opacity-50 hover:opacity-100')}>
+          {slot.tacticSlot.pinned ? <LockIcon className="size-[1.1em]" /> : <LockOpenIcon className="size-[1.1em]" />}
+        </button>
       </div>
 
       {starter ? (

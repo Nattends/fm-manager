@@ -52,14 +52,43 @@ export function phaseSlots(slots: TacticSlot[], phase: Phase): TacticSlot[] {
 }
 
 /** Réécrit dans la tactique les postes modifiés dans la vue d'une phase (inverse de phaseSlots). */
-export function mergePhase(slots: TacticSlot[], phase: Phase, view: TacticSlot[]): TacticSlot[] {
+export function mergePhase(slots: TacticSlot[], phase: Phase, view: TacticSlot[], roles: RoleDefinition[] = DEFAULT_ROLES): TacticSlot[] {
   return slots.map((s) => {
     const v = view.find((x) => x.slotId === s.slotId)
     if (!v) return s
-    return phase === 'ip'
+    const merged: TacticSlot = phase === 'ip'
       ? { ...s, ...shapeOf(v), lockedPlayerId: v.lockedPlayerId }
       : { ...s, oop: shapeOf(v), lockedPlayerId: v.lockedPlayerId }
+    return s.pinned ? followCell(merged, phase, roles) : merged
   })
+}
+
+/** Poste verrouillé : l'autre phase reprend la case de la phase modifiée (rôle remplacé s'il n'existe pas à ce poste). */
+function followCell(s: TacticSlot, from: Phase, roles: RoleDefinition[]): TacticSlot {
+  const src = from === 'ip' ? s : s.oop
+  const dst = from === 'ip' ? s.oop : shapeOf(s)
+  if (dst.row === src.row && dst.col === src.col) return s
+  const position = positionAt(src.row, src.col)
+  if (!position) return s
+  const other: Phase = from === 'ip' ? 'oop' : 'ip'
+  const role = resolveRole(dst.roleId, roles, position, other)
+  const roleId = role.id === dst.roleId && role.positions.includes(position) ? dst.roleId : defaultRoleFor(position, other)
+  const next: SlotShape = { row: src.row, col: src.col, roleId }
+  return from === 'ip' ? { ...s, oop: next } : { ...s, ...next }
+}
+
+/** Verrouille ou déverrouille un poste ; verrouillé, il reprend sans ballon sa case avec ballon. */
+export function setPinned(slots: TacticSlot[], slotId: string, pinned: boolean, roles: RoleDefinition[] = DEFAULT_ROLES): TacticSlot[] {
+  return slots.map((s) => (s.slotId === slotId ? pin({ ...s, pinned }, roles) : s))
+}
+
+/** Verrouille ou déverrouille tous les postes. */
+export function setAllPinned(slots: TacticSlot[], pinned: boolean, roles: RoleDefinition[] = DEFAULT_ROLES): TacticSlot[] {
+  return slots.map((s) => pin({ ...s, pinned }, roles))
+}
+
+function pin(s: TacticSlot, roles: RoleDefinition[]): TacticSlot {
+  return s.pinned ? followCell(s, 'ip', roles) : s
 }
 
 /** Modifie la case ou le rôle d'un poste dans une phase. */
@@ -105,7 +134,9 @@ export function normalizeTacticSlots(slots: Partial<TacticSlot>[], formationId: 
     // le devoir des anciennes tactiques (FM24) n'est pas repris
     const shape: SlotShape = { row: s.row!, col: s.col!, roleId: s.roleId! }
     const oop = s.oop ? shapeOf(s.oop) : { ...shape, roleId: defaultRoleFor(positionAt(shape.row, shape.col) ?? 'MC', 'oop') }
-    return { slotId: s.slotId!, ...shape, oop, lockedPlayerId: s.lockedPlayerId ?? null }
+    const slot: TacticSlot = { slotId: s.slotId!, ...shape, oop, lockedPlayerId: s.lockedPlayerId ?? null }
+    // un poste verrouillé reste sur sa case avec ballon
+    return s.pinned ? pin({ ...slot, pinned: true }, DEFAULT_ROLES) : slot
   })
 }
 

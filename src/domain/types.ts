@@ -84,6 +84,8 @@ export interface TacticSlot extends SlotShape {
   slotId: string
   /** Disposition sans ballon. */
   oop: SlotShape
+  /** Poste verrouillé : la case sans ballon est toujours celle avec ballon (seul le rôle peut changer). */
+  pinned?: boolean
   /** Joueur imposé manuellement sur ce poste (null = choix automatique). */
   lockedPlayerId: number | null
 }

@@ -5,7 +5,7 @@ import { FORMATIONS, getFormation } from './formations'
 import { hungarianMax } from './hungarian'
 import {
   bestEleven, benchPlayer, canPlace, clearEleven, computeLineup, fillEmptySlots, keyAttributesAt, rateAtSlot, copyInPossession, defaultTacticSlots, layoutName, mergePhase, moveSlot, normalizeTacticSlots,
-  narrowHalfSpaceGrid, patchShape, phaseSlots, placePlayer, resolveRole, summarizeLineup,
+  narrowHalfSpaceGrid, patchShape, phaseSlots, placePlayer, resolveRole, setAllPinned, setPinned, summarizeLineup,
 } from './lineup'
 import { PITCH_COLS, PITCH_ROWS, fieldCells, formationName, positionAt } from './pitch'
 import { POSITIONS, isPosition, type Position } from './positions'
@@ -418,6 +418,28 @@ describe('phases avec et sans ballon', () => {
     expect(positionAt(moved.oop.row, moved.oop.col)).toBe('MR')
     expect(layoutName(phaseSlots(slots, 'ip')).shape).toBe(layoutName(defaultTacticSlots(f)).shape)
     expect(copyInPossession(slots).find((s) => s.slotId === moved.slotId)!.oop.row).toBe(moved.row)
+  })
+
+  it('poste verrouillé : la case sans ballon suit la case avec ballon, dans les deux sens', () => {
+    const id = amr().slotId
+    const pinnedOne = (slots: ReturnType<typeof defaultTacticSlots>) => slots.find((s) => s.slotId === id)!
+    // verrouiller reprend la case avec ballon
+    const diverged = withMrOutOfPossession()
+    const pinned = setPinned(diverged, id, true)
+    expect(pinnedOne(pinned).oop.row).toBe(pinnedOne(pinned).row)
+    expect(pinnedOne(pinned).oop.col).toBe(pinnedOne(pinned).col)
+    // un déplacement sans ballon déplace aussi la case avec ballon
+    const view = phaseSlots(pinned, 'oop')
+    const { row, col } = mrCell(view)
+    const moved = pinnedOne(mergePhase(pinned, 'oop', moveSlot(view, id, row, col, DEFAULT_ROLES)))
+    expect([moved.row, moved.col, moved.oop.row, moved.oop.col]).toEqual([row, col, row, col])
+    // et inversement
+    const ipView = phaseSlots(pinned, 'ip')
+    const back = pinnedOne(mergePhase(pinned, 'ip', moveSlot(ipView, id, row, col, DEFAULT_ROLES)))
+    expect([back.oop.row, back.oop.col]).toEqual([row, col])
+    // un poste non verrouillé garde sa case propre
+    expect(pinnedOne(setPinned(pinned, id, false)).pinned).toBe(false)
+    expect(setAllPinned(diverged, true).every((s) => s.oop.row === s.row && s.oop.col === s.col)).toBe(true)
   })
 
   it('modifie le rôle d\'une seule phase', () => {
