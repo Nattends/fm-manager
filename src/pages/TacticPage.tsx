@@ -3,7 +3,7 @@ import {
   type DragEndEvent, type DragOverEvent, type DragStartEvent,
 } from '@dnd-kit/core'
 import {
-  CheckIcon, ColumnsIcon, CopyIcon, EraserIcon, GripVerticalIcon, Maximize2Icon, Minimize2Icon,
+  CheckIcon, ColumnsIcon, CopyIcon, EraserIcon, GripVerticalIcon, LayersIcon, Maximize2Icon, Minimize2Icon,
   PanelBottomCloseIcon, PanelBottomOpenIcon, PanelRightCloseIcon, PanelRightOpenIcon,
   Loader2Icon, LockIcon, LockOpenIcon, SparklesIcon, Trash2Icon, Undo2Icon, WandIcon, XIcon,
 } from 'lucide-react'
@@ -36,6 +36,7 @@ import { PITCH_COLS, PITCH_ROWS, cellCenter, positionAt } from '@/domain/pitch'
 import { POSITIONS } from '@/domain/positions'
 import { bestRole, type RoleRating } from '@/domain/rating'
 import type { NewTactic, Phase, Player, RoleDefinition, TacticSlot } from '@/domain/types'
+import type { Position } from '@/domain/positions'
 import { useI18n } from '@/i18n'
 import { useStore } from '@/store'
 import { PlayerSheet } from './PlayerSheet'
@@ -50,11 +51,11 @@ type DragData = { kind: 'player'; playerId: number } | { kind: 'card'; slotId: s
 
 type Dragged = { kind: 'player'; player: Player } | { kind: 'card'; slot: LineupSlot; phase: Phase }
 
-/** Terrain affiché : une phase, ou les deux côte à côte. */
-type PhaseView = Phase | 'both'
+/** Terrain affiché : une phase, les deux côte à côte, ou les deux superposées sur un seul terrain. */
+type PhaseView = Phase | 'both' | 'combined'
 const PHASES: Phase[] = ['ip', 'oop']
 
-type PanelTab = 'backups' | 'squad' | 'instructions'
+type PanelTab = 'backups' | 'unused' | 'squad' | 'instructions'
 
 
 /**
@@ -126,8 +127,9 @@ export function TacticPage() {
   /** Phase affichée sur le terrain (avec ou sans ballon), ou les deux terrains côte à côte. */
   const [phaseView, setPhaseView] = useState<PhaseView>('both')
   const both = phaseView === 'both'
+  const combined = phaseView === 'combined'
   /** Phase des réglages de la barre (formation) et du panneau : avec ballon quand les deux sont affichées. */
-  const phase: Phase = both ? 'ip' : phaseView
+  const phase: Phase = both || combined ? 'ip' : phaseView
   // Fenêtre en portrait (écran vertical) : panneau sous le terrain.
   const portrait = useIsPortrait()
   const stacked = portrait && !big
@@ -164,6 +166,13 @@ export function TacticPage() {
   const lineup = lineups[phase]
   const summary = summarizeLineup(lineup)
   const starterIds = new Set(lineup.slots.flatMap((s) => (s.starter ? [s.starter.player.id] : [])))
+  // ni titulaires ni premières doublures (celles affichées sur les cartes) ; les doublures de rang suivant gardent leur poste
+  const usedIds = new Set([...starterIds, ...lineup.slots.flatMap((s) => (s.backups[0] ? [s.backups[0].player.id] : []))])
+  const laterBackupOf = new Map(lineup.slots.flatMap((s) => s.backups.slice(1).map((b) => [b.player.id, s.slot.position] as const)))
+  const unused = players
+    .filter((p) => !usedIds.has(p.id))
+    .map((p) => ({ player: p, best: bestRole(p, roles), backupOf: laterBackupOf.get(p.id) ?? null }))
+    .sort((a, b) => (b.best?.rating.score ?? 0) - (a.best?.rating.score ?? 0))
 
   const update = (patch: Partial<NewTactic>) => {
     setDraft((d) => ({ ...d, ...patch }))
@@ -330,6 +339,7 @@ export function TacticPage() {
             <ToggleGroupItem value="ip" className="px-3">{t.tactic.phase.ip}</ToggleGroupItem>
             <ToggleGroupItem value="oop" className="px-3">{t.tactic.phase.oop}</ToggleGroupItem>
             <ToggleGroupItem value="both" className="px-3" title={t.tactic.bothPhasesTitle}><ColumnsIcon />{t.tactic.bothPhases}</ToggleGroupItem>
+            <ToggleGroupItem value="combined" className="px-3" title={t.tactic.combinedTitle}><LayersIcon />{t.tactic.combined}</ToggleGroupItem>
           </ToggleGroup>
           {phaseView !== 'ip' && (
             <Button variant="ghost" size="sm" onClick={() => update({ slots: copyInPossession(draft.slots) })} title={t.tactic.copyFromIpTitle}>
@@ -352,6 +362,7 @@ export function TacticPage() {
               <PitchView key={ph} phase={ph} lineup={lineups[ph]} view={views[ph]} roles={roles} starterIds={starterIds}
                 big={big}
                 label={both ? `${t.tactic.phase[ph]} · ${summarizeLineup(lineups[ph]).phases[ph].toFixed(0)}` : null}
+                oop={combined ? lineups.oop : null}
                 movingId={dragged?.kind === 'card' && dragged.phase === ph ? dragged.slot.slot.id : null}
                 acceptsPlayers={dragged?.kind !== 'card'}
                 onRole={(slotId, roleId) => updateShape(ph, slotId, { roleId })}
@@ -373,6 +384,7 @@ export function TacticPage() {
                 <TabsList variant="line" className="w-full shrink-0 justify-start border-b border-border px-2">
                   <TabsTrigger value="squad" className="flex-none px-2.5">{t.tactic.squad}</TabsTrigger>
                   <TabsTrigger value="backups" className="flex-none px-2.5">{t.tactic.backups}</TabsTrigger>
+                  <TabsTrigger value="unused" className="flex-none px-2.5">{t.tactic.unused(unused.length)}</TabsTrigger>
                   <TabsTrigger value="instructions" className="flex-none px-2.5">{t.tactic.instructions}</TabsTrigger>
                 </TabsList>
                 {/* forceMount : la zone « effectif » reste une cible de dépôt même quand l'onglet est caché. */}
@@ -384,6 +396,9 @@ export function TacticPage() {
                 </TabsContent>
                 <TabsContent value="backups" className="min-h-0 overflow-y-auto p-2">
                   <BackupsList lineup={lineup} onOpen={setOpenId} />
+                </TabsContent>
+                <TabsContent value="unused" className="min-h-0 overflow-y-auto p-2">
+                  <UnusedList unused={unused} excludedIds={draft.excludedPlayerIds} onOpen={setOpenId} />
                 </TabsContent>
                 <TabsContent value="instructions" className="p-3">
                   <Textarea rows={8} placeholder={t.tactic.instructionsPlaceholder} value={draft.notes}
@@ -653,6 +668,51 @@ function SquadList({ players, roles, excludedIds, starterIds, dropActive, onOpen
   )
 }
 
+/** Joueurs ni titulaires ni doublures (indisponibles et écartés compris), du meilleur au moins bon. */
+function UnusedList({ unused, excludedIds, onOpen }: {
+  unused: { player: Player; best: ReturnType<typeof bestRole>; backupOf: Position | null }[]
+  excludedIds: number[]
+  onOpen: (id: number) => void
+}) {
+  const { t, roleName } = useI18n()
+  const excluded = new Set(excludedIds)
+  if (unused.length === 0) return <p className="px-1 py-2 text-xs text-muted-foreground">{t.tactic.unusedEmpty}</p>
+  return (
+    <div>
+      <p className="mb-2 px-1 text-[11px] leading-snug text-muted-foreground">{t.tactic.unusedHint}</p>
+      <ul className="space-y-0.5">
+        {unused.map(({ player, best, backupOf }) => {
+          const available = isAvailable(player)
+          const row = (
+            <div onClick={() => onOpen(player.id)}
+              className={cn('flex items-center gap-2 rounded-md px-1.5 py-1 transition-colors hover:bg-secondary/60', available ? 'cursor-grab' : 'cursor-not-allowed opacity-40')}>
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-1.5">
+                  <span className="truncate text-[13px] font-medium text-slate-100">{player.name}</span>
+                  {excluded.has(player.id) && <span className="text-[10px] font-semibold text-amber-400">{t.tactic.dropped}</span>}
+                  {!available && <span className="text-[10px] font-semibold text-rose-400">{t.tactic.unavailable}</span>}
+                  {backupOf && <span className="text-[10px] font-semibold text-sky-400">{t.tactic.laterBackup(t.positions[backupOf])}</span>}
+                </span>
+                <span className="block truncate text-[11px] text-muted-foreground">
+                  {t.player.ageValue(player.age)} · {POSITIONS.filter((p) => (player.positions[p] ?? 0) >= 17).map((p) => t.positions[p]).join(' / ')}
+                  {best?.rating.rated && <> · {roleName(best.role)}</>}
+                </span>
+              </span>
+              <AvgRating value={player.avgRating} matches={player.ratedMatches} className="text-[11px]" />
+              {best && <RatingBadge rating={best.rating} size="sm" />}
+            </div>
+          )
+          return (
+            <li key={player.id}>
+              {available ? <DraggablePlayer id={`unused-${player.id}`} playerId={player.id}>{row}</DraggablePlayer> : row}
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
 function BackupsList({ lineup, onOpen }: { lineup: Lineup; onOpen: (id: number) => void }) {
   return (
     <div className="divide-y divide-border/70">
@@ -676,9 +736,11 @@ function BackupsList({ lineup, onOpen }: { lineup: Lineup; onOpen: (id: number) 
 }
 
 /** Un terrain (une phase de jeu) : marquages, cartes de poste et cases de dépôt pendant un déplacement. */
-function PitchView({ phase, lineup, view, roles, starterIds, big, label, movingId, acceptsPlayers, onRole, onPin, onRemove, onOpen }: {
+function PitchView({ phase, lineup, oop, view, roles, starterIds, big, label, movingId, acceptsPlayers, onRole, onPin, onRemove, onOpen }: {
   phase: Phase
   lineup: Lineup
+  /** Vue combinée : composition sans ballon, superposée (flèches vers les places sans ballon). */
+  oop: Lineup | null
   /** Postes vus dans cette phase. */
   view: TacticSlot[]
   roles: RoleDefinition[]
@@ -722,9 +784,11 @@ function PitchView({ phase, lineup, view, roles, starterIds, big, label, movingI
             background: 'radial-gradient(ellipse at center, transparent 50%, rgba(0, 0, 0, 0.35)), repeating-linear-gradient(180deg, #166534 0 10%, #15803d 10% 20%)',
           }}>
           <PitchLines ratio={ratio} />
+          {oop && !movingId && <OopShape ip={lineup} oop={oop} />}
           {movingId && <CellGrid phase={phase} slots={view} movingId={movingId} />}
           {lineup.slots.map((s) => (
             <SlotCard key={s.slot.id} phase={phase} slot={s} roles={roles} starterIds={starterIds} big={big}
+              oopRole={oop?.slots.find((o) => o.slot.id === s.slot.id)?.role}
               acceptsPlayers={acceptsPlayers}
               onRole={(roleId) => onRole(s.slot.id, roleId)}
               onPin={() => onPin(s.slot.id, !s.tacticSlot.pinned)}
@@ -735,6 +799,42 @@ function PitchView({ phase, lineup, view, roles, starterIds, big, label, movingI
       </div>
     </div>
   )
+}
+
+/**
+ * Vue combinée : pour chaque poste qui change de case sans ballon, un trait pointillé part de la carte
+ * (place avec ballon) vers un repère à la place sans ballon (poste et nom du titulaire).
+ */
+function OopShape({ ip, oop }: { ip: Lineup; oop: Lineup }) {
+  const { t } = useI18n()
+  const moves = ip.slots.flatMap((s) => {
+    const o = oop.slots.find((x) => x.slot.id === s.slot.id)
+    return o && (o.slot.x !== s.slot.x || o.slot.y !== s.slot.y) ? [{ from: s, to: o }] : []
+  })
+  return (
+    <>
+      <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+        {moves.map(({ from, to }) => (
+          <line key={from.slot.id} x1={from.slot.x} y1={from.slot.y} x2={to.slot.x} y2={to.slot.y}
+            stroke="rgb(125 211 252 / 0.85)" strokeWidth="2" strokeDasharray="6 4" vectorEffect="non-scaling-stroke" />
+        ))}
+      </svg>
+      {moves.map(({ from, to }) => (
+        <div key={from.slot.id} style={pitchPoint(to.slot.x, to.slot.y)}
+          title={`${t.tactic.phase.oop} · ${t.positions[to.slot.position]}${from.starter ? ` · ${from.starter.player.name}` : ''}`}
+          className="pointer-events-auto absolute z-[5] flex max-w-[17%] -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-full bg-sky-950/90 px-2 py-0.5 text-[11px] font-semibold text-sky-200 shadow-lg ring-1 ring-sky-400/70">
+          <span className="shrink-0">{t.positions[to.slot.position]}</span>
+          {from.starter && <span className="truncate font-normal text-sky-300/90">{lastName(from.starter.player.name)}</span>}
+        </div>
+      ))}
+    </>
+  )
+}
+
+/** Dernier mot du nom (repères compacts de la vue combinée). */
+function lastName(name: string): string {
+  const words = name.trim().split(/\s+/)
+  return words[words.length - 1] ?? name
 }
 
 /**
@@ -800,9 +900,11 @@ function cardFont(big: boolean): string {
   return `clamp(9px, min(1.75cqh, 2.3cqw), ${big ? 17 : 14}px)`
 }
 
-function SlotCard({ phase, slot, roles, starterIds, big, acceptsPlayers, onRole, onPin, onRemove, onOpen }: {
+function SlotCard({ phase, slot, oopRole, roles, starterIds, big, acceptsPlayers, onRole, onPin, onRemove, onOpen }: {
   phase: Phase
   slot: LineupSlot
+  /** Vue combinée : rôle sans ballon du poste (affiché s'il diffère du rôle avec ballon). */
+  oopRole?: RoleDefinition
   roles: RoleDefinition[]
   starterIds: Set<number>
   /** Grande vue : cartes agrandies. */
@@ -816,7 +918,7 @@ function SlotCard({ phase, slot, roles, starterIds, big, acceptsPlayers, onRole,
   onRemove: () => void
   onOpen: (playerId: number) => void
 }) {
-  const { t } = useI18n()
+  const { t, roleName } = useI18n()
   const { setNodeRef, isOver, active } = useDroppable({ id: `${SLOT_PREFIX}${phase}:${slot.slot.id}`, disabled: !acceptsPlayers })
   const position = slot.slot.position
   const isGk = position === 'GK'
@@ -899,6 +1001,14 @@ function SlotCard({ phase, slot, roles, starterIds, big, acceptsPlayers, onRole,
       {dropHint && (
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 truncate bg-amber-400 px-[0.5em] py-[0.15em] text-center text-[0.85em] font-semibold text-slate-950">
           {dropHint}
+        </div>
+      )}
+
+      {/* Vue combinée : rôle sans ballon quand il change */}
+      {oopRole && oopRole.id !== slot.role.id && (
+        <div className={cn('truncate border-t border-sky-400/20 bg-sky-500/15 px-[0.6em] py-[0.15em] text-sky-200', s.meta)}
+          title={`${t.tactic.phase.oop} : ${roleName(oopRole)}`}>
+          <span className="text-sky-400/80">{t.tactic.oopShort}</span> {roleName(oopRole)}
         </div>
       )}
 

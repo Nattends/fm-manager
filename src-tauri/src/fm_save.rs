@@ -228,12 +228,32 @@ fn is_block(d: &[u8], p: usize) -> bool {
   d[p..p + 15].iter().all(|&v| (1..=20).contains(&v)) && d[p + 15..p + 69].iter().all(|&v| (1..=100).contains(&v))
 }
 
+/// Distance entre la fin d'un bloc et le repère de sa fiche : en général 1 à 3 Ko (`MARKER_NEAR`), mais plus
+/// de 4 Ko pour certains joueurs (Yangel Herrera : 4,2 Ko), cherchés alors jusqu'à `MARKER_FAR`.
+const MARKER_NEAR: usize = 4_000;
+const MARKER_FAR: usize = 16_000;
+
+fn is_marker(d: &[u8], q: usize) -> bool {
+  d[q] == 0 && d[q + 1] == 0 && d[q + 2] == 0 && d[q + 3] == 3 && d[q + 4] == 1 && d[q + 6..q + 13].iter().all(|&v| v == 0)
+}
+
 /// Repère qui suit le nom et la date de naissance : `00 00 00 03 01 <nation> 00×7`.
+/// Au-delà de `MARKER_NEAR`, la recherche s'arrête au bloc joueur suivant : ce repère serait le sien.
 fn next_marker(d: &[u8], from: usize) -> Option<usize> {
-  let end = (from + 4000).min(d.len().saturating_sub(16));
-  (from..end).find(|&q| {
-    d[q] == 0 && d[q + 1] == 0 && d[q + 2] == 0 && d[q + 3] == 3 && d[q + 4] == 1 && d[q + 6..q + 13].iter().all(|&v| v == 0)
-  })
+  let limit = d.len().saturating_sub(16);
+  let near = (from + MARKER_NEAR).min(limit);
+  if let Some(q) = (from..near).find(|&q| is_marker(d, q)) {
+    return Some(q);
+  }
+  for q in from..(from + MARKER_FAR).min(limit) {
+    if is_block(d, q) {
+      return None;
+    }
+    if q >= near && is_marker(d, q) {
+      return Some(q);
+    }
+  }
+  None
 }
 
 /// Contrats : `01 00 6C 07 ?? [u32][équipe u32] 00×4 [salaire u32] 01 0B 00`, fin de contrat 38 octets avant.

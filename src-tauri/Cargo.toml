@@ -1,6 +1,6 @@
 [package]
 name = "fm27-manager"
-version = "0.20.0"
+version = "0.21.0"
 description = "Gestion d'équipe pour Football Manager 27"
 authors = ["Nathan"]
 license = ""
@@ -43,3 +43,11 @@ windows = { version = "0.61", features = [
   "Foundation_Collections", "Globalization", "Graphics_Imaging", "Media_Ocr", "Storage_Streams",
   "Win32_Foundation", "Win32_Graphics_Gdi", "Win32_System_WinRT", "Win32_UI_WindowsAndMessaging",
 ] }
+
+# Mode dev : infos de débogage réduites (numéros de ligne seulement, aucune pour les dépendances),
+# pour limiter la taille de target/debug.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false

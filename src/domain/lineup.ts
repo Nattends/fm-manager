@@ -292,7 +292,25 @@ export function computeLineup(
   const bench = available.filter((p) => !used.has(p.id) && !excluded.has(p.id))
   const shown = (r: Rated): RatedPlayer => ({ player: r.player, rating: r[phase], overall: r.overall })
 
-  const slots: LineupSlot[] = entries.map((e) => {
+  // Doublures exclusives : un remplaçant ne double qu'un seul poste. Chaque tour donne à chaque poste
+  // sa meilleure doublure par affectation optimale parmi les remplaçants pas encore pris.
+  const benchRatings = entries.map((e) => bench.map((p) => ({ player: p, ...rate(p, e) })))
+  const backups = entries.map((): Rated[] => [])
+  const taken = new Set<number>()
+  for (let round = 0; round < BACKUPS_PER_SLOT; round++) {
+    const cols = bench.map((_, j) => j).filter((j) => !taken.has(bench[j].id))
+    if (cols.length === 0) break
+    const padding = Math.max(0, entries.length - cols.length)
+    const matrix = benchRatings.map((row) => [...cols.map((j) => row[j].overall), ...new Array<number>(padding).fill(0)])
+    hungarianMax(matrix).forEach((col, i) => {
+      if (col >= cols.length) return
+      const j = cols[col]
+      taken.add(bench[j].id)
+      backups[i].push(benchRatings[i][j])
+    })
+  }
+
+  const slots: LineupSlot[] = entries.map((e, i) => {
     const starter = starters.get(e.tacticSlot.slotId)
     return {
       slot: e[phase].slot,
@@ -301,10 +319,7 @@ export function computeLineup(
       role: e[phase].role,
       starter: starter ? shown(starter) : null,
       locked: lockedSlots.has(e.tacticSlot.slotId),
-      backups: bench
-        .map((p) => shown({ player: p, ...rate(p, e) }))
-        .sort((a, b) => b.overall - a.overall)
-        .slice(0, BACKUPS_PER_SLOT),
+      backups: backups[i].map(shown).sort((a, b) => b.overall - a.overall),
     }
   })
 

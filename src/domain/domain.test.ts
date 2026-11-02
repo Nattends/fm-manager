@@ -3,7 +3,7 @@ import { ALL_ATTRIBUTES, attributesOf, isAttributeKey, type AttributeKey } from 
 import { DEFAULT_ROLES, DEFAULT_ROLE_BY_POSITION, defaultRoleFor, isRoleList } from './defaultRoles'
 import { FORMATIONS, getFormation } from './formations'
 import { hungarianMax } from './hungarian'
-import {
+import { BACKUPS_PER_SLOT,
   bestEleven, benchPlayer, canPlace, clearEleven, computeLineup, fillEmptySlots, keyAttributesAt, rateAtSlot, copyInPossession, defaultTacticSlots, layoutName, mergePhase, moveSlot, normalizeTacticSlots,
   narrowHalfSpaceGrid, patchShape, phaseSlots, placePlayer, resolveRole, setAllPinned, setPinned, summarizeLineup,
 } from './lineup'
@@ -283,6 +283,16 @@ describe('computeLineup', () => {
     expect(at('st')).toBe('BU')
     expect(lineup.bench.map((p) => p.name)).toEqual(['BU2'])
     expect(lineup.slots.find((s) => s.slot.id === 'st')!.backups[0].player.name).toBe('BU2')
+  })
+
+  it("ne met un remplaçant en doublure que d'un seul poste", () => {
+    const extra = [player('BU3', { DC: 20 }, level(13)), player('BU4', { MC: 20 }, level(13)), player('BU5', { ST: 20 }, level(10))]
+    const lineup = computeLineup(defaultTacticSlots(f), [...squad, ...extra], DEFAULT_ROLES)
+    const names = lineup.slots.flatMap((s) => s.backups.map((b) => b.player.name))
+    expect(names.sort()).toEqual(['BU2', 'BU3', 'BU4', 'BU5'])
+    const of = (id: string) => lineup.slots.find((s) => s.slot.id === id)!.backups.map((b) => b.player.name)
+    expect(of('st')).toContain('BU2')
+    expect(lineup.slots.filter((s) => s.backups.length > BACKUPS_PER_SLOT)).toHaveLength(0)
   })
 
   it('résume le XI : âge moyen, lignes, joueurs hors poste', () => {
