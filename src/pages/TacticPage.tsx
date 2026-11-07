@@ -5,7 +5,7 @@ import {
 import {
   CheckIcon, ColumnsIcon, CopyIcon, EraserIcon, GripVerticalIcon, LayersIcon, Maximize2Icon, Minimize2Icon,
   PanelBottomCloseIcon, PanelBottomOpenIcon, PanelRightCloseIcon, PanelRightOpenIcon,
-  Loader2Icon, LockIcon, LockOpenIcon, SparklesIcon, Trash2Icon, Undo2Icon, WandIcon, XIcon,
+  Loader2Icon, LockIcon, LockOpenIcon, SparklesIcon, Trash2Icon, TrophyIcon, Undo2Icon, WandIcon, XIcon,
 } from 'lucide-react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
@@ -29,7 +29,7 @@ import { LINE_COLORS, attrColor, lineColorOf, scoreColor, scoreText } from '@/co
 import { CUSTOM_FORMATION_ID, FORMATIONS, getFormation, type Formation } from '@/domain/formations'
 import {
   bestEleven, benchPlayer, canPlace, clearEleven, computeLineup, fillEmptySlots, copyInPossession, keyAttributesAt, rateAtSlot, defaultTacticSlots, isAvailable, layoutName, mergePhase, moveSlot,
-  patchShape, phaseSlots, placePlayer, setAllPinned, setPinned, summarizeLineup,
+  optimalTactic, patchShape, phaseSlots, placePlayer, setAllPinned, setPinned, summarizeLineup,
   type Assignment, type Lineup, type LineupSlot, type LineupSummary, type PitchLine,
 } from '@/domain/lineup'
 import { PITCH_COLS, PITCH_ROWS, cellCenter, positionAt } from '@/domain/pitch'
@@ -276,6 +276,17 @@ export function TacticPage() {
     setDirty(false)
   }
 
+  /** Nouvelle tactique : formation, rôles et joueurs optimaux (enregistrée par la sauvegarde automatique). */
+  const createOptimal = async () => {
+    if (dirty) await persist()
+    const opt = optimalTactic(players, roles)
+    const name = t.tactic.optimalName(t.formations[opt.formation.id] ?? opt.formation.id)
+    savedId.current = undefined
+    setDraft({ name, formation: opt.formation.id, slots: opt.slots, excludedPlayerIds: [], notes: '' })
+    setDirty(true)
+    toast.success(t.tactic.optimalCreated(name, (opt.totalScore / opt.slots.length).toFixed(0)))
+  }
+
   const clearXi = () => update({ slots: clearEleven(draft.slots), excludedPlayerIds: [] })
   const fillXi = () => update({ slots: fillEmptySlots(draft.slots, players, roles, draft.excludedPlayerIds) })
   const bestXi = () => update(bestEleven(draft.slots, players, roles))
@@ -352,6 +363,7 @@ export function TacticPage() {
           </Button>
           <Button variant="outline" size="sm" onClick={fillXi} disabled={emptySlots === 0} title={t.tactic.fillTitle}><WandIcon /><span className={TOOL_LABEL}>{t.tactic.fill}</span></Button>
           <Button variant="outline" size="sm" onClick={bestXi} title={t.tactic.bestTitle}><SparklesIcon /><span className={TOOL_LABEL}>{t.tactic.best}</span></Button>
+          <Button variant="outline" size="sm" onClick={createOptimal} title={t.tactic.optimalTitle}><TrophyIcon /><span className={TOOL_LABEL}>{t.tactic.optimal}</span></Button>
           <Button variant="ghost" size="sm" onClick={clearXi} title={t.tactic.resetTitle}><EraserIcon /><span className={TOOL_LABEL}>{t.tactic.reset}</span></Button>
         </PageHeader>
 

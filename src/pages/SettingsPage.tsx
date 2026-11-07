@@ -6,8 +6,8 @@ import { toast } from 'sonner'
 import { askConfirm } from '@/lib/confirm'
 import { changeAttrThreshold, resetAttrThresholds, useAttrThresholds } from '@/lib/attrThresholds'
 import { LOGO_STYLES, setLogoStyle, useLogoStyle } from '@/lib/logoStyle'
-import { refreshFromSave } from '@/lib/refreshFromSave'
-import { getSaveLink, lastSavePath, setSaveLink } from '@/lib/saveLink'
+import { getSaveLink } from '@/lib/saveLink'
+import { useSaveRefresh } from '@/lib/useSaveRefresh'
 import { appVersion, checkForUpdate } from '@/lib/updates'
 import { cn } from '@/lib/utils'
 import { loadSizeLock, setSizeLock } from '@/lib/windowMode'
@@ -19,6 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ClubLogo } from '@/components/ClubLogo'
 import { ATTR_TIER_COLORS, attrColor } from '@/components/styles'
 import { offerUpdate } from '@/components/updateToast'
+import { MoneyballParamsPanel, RatingParamsPanel } from '@/components/ScoringSettings'
 import { PageHeader, Panel } from '@/components/layout'
 import type { Backup } from '@/data/dataSource'
 import { INVALID_BACKUP } from '@/data/manualSource'
@@ -37,7 +38,7 @@ export function SettingsPage() {
   const [sizeLocked, setSizeLocked] = useState(loadSizeLock)
   const [version, setVersion] = useState('')
   const [checking, setChecking] = useState(false)
-  const [refreshing, setRefreshing] = useState(false)
+  const { refreshing, refresh: runRefresh } = useSaveRefresh()
   const [saveLink, setSaveLinkState] = useState(() => getSaveLink(activeClub.id))
   useEffect(() => {
     appVersion().then(setVersion).catch(() => setVersion('?'))
@@ -56,32 +57,10 @@ export function SettingsPage() {
     }
   }
 
-  const pickSave = async (defaultPath?: string) => {
-    const picked = await open({ title: t.fmSave.pickTitle, defaultPath, filters: [{ name: 'Football Manager', extensions: ['fm'] }] })
-    return typeof picked === 'string' ? picked : null
-  }
-
   /** Relit la sauvegarde liée au club actif (ou une autre, choisie maintenant). */
   const refresh = async (choose: boolean) => {
-    setRefreshing(true)
-    try {
-      if (choose) {
-        const path = await pickSave(saveLink?.path ?? lastSavePath())
-        if (!path) return
-        setSaveLink(activeClub.id, { path, saveClubId: null })
-      }
-      const r = await refreshFromSave(activeClub, players, savePlayer, pickSave, deletePlayer,
-        (gone) => askConfirm(t.settings.refreshRemoveConfirm(gone.map((p) => p.name).join('\n'), gone.length)))
-      setSaveLinkState(getSaveLink(activeClub.id))
-      if (!r) return
-      const notes = [r.removed > 0 && t.settings.refreshRemoved(r.removed), r.missing > 0 && t.settings.refreshMissing(r.missing)]
-        .filter(Boolean).join(' ')
-      toast.success(t.settings.refreshDone(r.clubName, r.created, r.updated, r.scouted), notes ? { description: notes } : undefined)
-    } catch (e) {
-      toast.error(t.settings.refreshFailed(String(e)))
-    } finally {
-      setRefreshing(false)
-    }
+    await runRefresh(choose)
+    setSaveLinkState(getSaveLink(activeClub.id))
   }
 
   const toggleSizeLock = (locked: boolean) => {
@@ -276,6 +255,13 @@ export function SettingsPage() {
               <Button variant="outline" onClick={generateTeam} disabled={demoBusy}><DicesIcon />{t.settings.randomTeam}</Button>
             </div>
           </Panel>
+
+          <div className="col-span-2 mt-4">
+            <h2 className="text-base font-semibold text-slate-100">{t.scoring.title}</h2>
+            <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">{t.scoring.intro}</p>
+          </div>
+          <RatingParamsPanel />
+          <MoneyballParamsPanel />
         </div>
       </div>
     </div>

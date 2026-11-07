@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
-  buildOutput, contractDays, DEPTH_SHARE, evaluate, expectedScore, feeFactor, fitCurve, outputPoints, primaryPosition, reachOf,
-  readCurve, regress2, slotGain, squadClubIndex, statValue, withinReach, type MoneyballModel, type TeamSlot,
+  AGE_BANDS, buildOutput, contractDays, DEFAULT_MONEYBALL_PARAMS, DEPTH_SHARE, evaluate, expectedScore, feeFactor, fitCurve, outputPoints, primaryPosition, reachOf,
+  normalizeMoneyballParams, OUTPUT_WEIGHTS, rankMoneyball, readCurve, regress2, slotGain, squadClubIndex, statValue, withinReach, type MoneyballModel, type TeamSlot,
 } from './moneyball'
 import type { ScoutDb, ScoutPlayer } from './scouting'
 import type { Player, RoleDefinition } from './types'
 
 const TODAY = { day: 182, year: 2026 }
-const ONES = { gain: 1, surplus: 1, perf: 1, contract: 1 }
+const ONES = { ...DEFAULT_MONEYBALL_PARAMS, weights: { gain: 1, surplus: 1, perf: 1, contract: 1 } }
 
 /** Joueur de la base : postes dans l'ordre GK, SW, DL, DC, DR, DM, ML, MC, MR, AML, AMC, AMR, ST, WBL, WBR ; valeurs à 50 (10/20). */
 function scout(over: Partial<ScoutPlayer> & { pos?: number }): ScoutPlayer {
@@ -125,8 +125,8 @@ describe('évaluation', () => {
   // note 60 partout, marché : 40 pour 1 M€, 80 pour 100 M€ (log10 6 → 8)
   const model: MoneyballModel = {
     scores: new Float32Array([60]),
-    market: { byGroup: new Map(), byLine: new Map([['att', [[6, 40], [8, 80]]]]) },
-    output: { norms: new Map(), fits: new Map() },
+    market: { byGroup: new Map(), byLine: new Map([['att', [[6, 40], [8, 80]]]]), ageBands: AGE_BANDS },
+    output: { norms: new Map(), fits: new Map(), weights: OUTPUT_WEIGHTS },
     clubLevels: new Float32Array([70, 80]),
   }
   const scorers = new Map([['st@ST', () => 60]])
@@ -153,8 +153,39 @@ describe('évaluation', () => {
   })
 
   it('poids nuls : le score ne compte que les critères gardés', () => {
-    const r = evaluate(scout({ value: 1_000_000, wage: 0 }), 26, model, [slot], scorers, TODAY, { ...ONES, gain: 0 })
+    const r = evaluate(scout({ value: 1_000_000, wage: 0 }), 26, model, [slot], scorers, TODAY, { ...ONES, weights: { ...ONES.weights, gain: 0 } })
     expect(r.score).toBe(20)
+  })
+
+  it('applique les réglages : part de la doublure et réduction de contrat', () => {
+    const params = { ...ONES, depthShare: 0, fee: { ...ONES.fee, short: 0.5 } }
+    const r = evaluate(scout({ value: 100_000_000, wage: 0, contractEnd: { day: 300, year: 2026 } }), 26, model, [slot], scorers, TODAY, params)
+    expect(r.gain).toBe(10)
+    expect(r.fee).toBe(50_000_000)
+  })
+
+  it('classe sans réévaluer : poids et tri appliqués aux lignes déjà notées', () => {
+    const a = evaluate(scout({ index: 0, name: 'B', value: 1_000_000, wage: 0 }), 26, model, [slot], scorers, TODAY, ONES)
+    const b = { ...a, player: { ...a.player, index: 1, name: 'A' }, surplus: null }
+    const byScore = rankMoneyball([b, a], { weights: ONES.weights, sort: 'score', limit: 10 })
+    expect(byScore.rows.map((r) => r.player.name)).toEqual(['B', 'A'])
+    // sans le surplus, les deux scores sont égaux : ordre de la base
+    const noSurplus = rankMoneyball([b, a], { weights: { ...ONES.weights, surplus: 0 }, sort: 'score', limit: 10 })
+    expect(noSurplus.rows.map((r) => r.player.index)).toEqual([0, 1])
+    // valeur inconnue toujours en dernier, quel que soit le sens
+    expect(rankMoneyball([b, a], { weights: ONES.weights, sort: 'surplus', desc: false, limit: 10 }).rows[1].player.name).toBe('A')
+    expect(rankMoneyball([a, b], { weights: ONES.weights, sort: 'name', limit: 1 })).toMatchObject({ total: 2, rows: [{ player: { name: 'A' } }] })
+  })
+
+  it('réglages : garde les valeurs par défaut pour un réglage absent ou invalide et borne les autres', () => {
+    expect(normalizeMoneyballParams(null)).toEqual(DEFAULT_MONEYBALL_PARAMS)
+    const p = normalizeMoneyballParams({ depthShare: 3, minGain: 'x', weights: { gain: 2 }, ageBands: [30, 20, 20, 99], outputWeights: { att: { xg: 3, goals: -1 } } })
+    expect(p.depthShare).toBe(1)
+    expect(p.minGain).toBe(DEFAULT_MONEYBALL_PARAMS.minGain)
+    expect(p.weights).toEqual({ ...DEFAULT_MONEYBALL_PARAMS.weights, gain: 2 })
+    expect(p.ageBands).toEqual([20, 30])
+    expect(p.outputWeights.att).toEqual({ xg: 3 })
+    expect(p.outputWeights.gk).toEqual(DEFAULT_MONEYBALL_PARAMS.outputWeights.gk)
   })
 
   it('valeur à 0 € : inconnue (non calculée par le jeu), pas gratuite', () => {

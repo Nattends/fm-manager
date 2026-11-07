@@ -52,6 +52,71 @@ export const FAMILIARITY_CURVE: [familiarity: number, factor: number][] = [
 ]
 export const NEVER_PLAYED_FACTOR = 0.5
 
+/** Paramètres de la note, réglables dans Settings (les constantes ci-dessus sont les valeurs par défaut). */
+export interface RatingParams {
+  /** Part du poids total donnée aux attributs hors rôle (0 à 0,9). */
+  otherShare: number
+  /** Moyenne d'attributs (1-20) → note sur 100. */
+  ratingCurve: [number, number][]
+  /** Familiarité (1-20) → multiplicateur. */
+  familiarityCurve: [number, number][]
+  /** Multiplicateur d'un poste jamais joué. */
+  neverPlayed: number
+}
+
+export const DEFAULT_RATING_PARAMS: RatingParams = {
+  otherShare: 0.15,
+  ratingCurve: RATING_CURVE,
+  familiarityCurve: FAMILIARITY_CURVE,
+  neverPlayed: NEVER_PLAYED_FACTOR,
+}
+
+const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
+const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v))
+
+/** Courbe lue d'un réglage enregistré : points valides triés par x (au moins 2), sinon la courbe par défaut. */
+export function normalizeCurve(raw: unknown, fallback: [number, number][]): [number, number][] {
+  if (!Array.isArray(raw)) return fallback
+  const points = raw
+    .filter((p): p is [number, number] => Array.isArray(p) && p.length === 2 && finite(p[0]) && finite(p[1]))
+    .map(([x, y]) => [x, y] as [number, number])
+    .sort((a, b) => a[0] - b[0])
+  // abscisses en double : la dernière l'emporte
+  const unique = points.filter((p, i) => i === points.length - 1 || points[i + 1][0] !== p[0])
+  return unique.length >= 2 ? unique : fallback
+}
+
+/** Réglages enregistrés remis d'aplomb (valeurs manquantes ou invalides : valeur par défaut). */
+export function normalizeRatingParams(raw: unknown): RatingParams {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+  const d = DEFAULT_RATING_PARAMS
+  return {
+    otherShare: finite(r.otherShare) ? clamp(r.otherShare, 0, 0.9) : d.otherShare,
+    ratingCurve: normalizeCurve(r.ratingCurve, d.ratingCurve),
+    familiarityCurve: normalizeCurve(r.familiarityCurve, d.familiarityCurve),
+    neverPlayed: finite(r.neverPlayed) ? clamp(r.neverPlayed, 0, 1) : d.neverPlayed,
+  }
+}
+
+let params: RatingParams = DEFAULT_RATING_PARAMS
+let paramsVersion = 0
+
+/** Paramètres de la note en vigueur (toutes les notes de l'application les utilisent). */
+export function getRatingParams(): RatingParams {
+  return params
+}
+
+/** Change les paramètres de la note ; les caches de notes sont invalidés (voir `ratingParamsVersion`). */
+export function setRatingParams(next: RatingParams): void {
+  params = next
+  paramsVersion++
+}
+
+/** Numéro qui change avec les paramètres : clé des caches de notes. */
+export function ratingParamsVersion(): number {
+  return paramsVersion
+}
+
 function interpolate(curve: [number, number][], x: number): number {
   if (x <= curve[0][0]) return curve[0][1]
   for (let i = 1; i < curve.length; i++) {
@@ -65,12 +130,12 @@ function interpolate(curve: [number, number][], x: number): number {
 }
 
 export function scoreFromAverage(average: number): number {
-  return interpolate(RATING_CURVE, average)
+  return interpolate(params.ratingCurve, average)
 }
 
 export function familiarityFactor(familiarity: number | undefined): number {
-  if (!familiarity) return NEVER_PLAYED_FACTOR
-  return interpolate(FAMILIARITY_CURVE, familiarity)
+  if (!familiarity) return params.neverPlayed
+  return interpolate(params.familiarityCurve, familiarity)
 }
 
 /** Familiarité du joueur pour le rôle : poste précis si fourni, sinon meilleur poste du rôle. */
@@ -116,7 +181,7 @@ const weightsCache = new WeakMap<RoleDefinition['weights'], readonly (readonly [
  * Part du poids total donnée aux attributs hors rôle (répartie à égalité entre eux) : la même pour tous les rôles,
  * qu'ils comptent peu ou beaucoup d'attributs.
  */
-export const OTHER_ATTRIBUTES_SHARE = 0.15
+export const OTHER_ATTRIBUTES_SHARE = DEFAULT_RATING_PARAMS.otherShare
 
 /**
  * Poids utilisés pour noter : ceux du rôle, et pour tous les autres attributs un poids égal qui leur donne
@@ -124,18 +189,19 @@ export const OTHER_ATTRIBUTES_SHARE = 0.15
  */
 export function ratingWeights(role: RoleDefinition): readonly (readonly [AttributeKey, number])[] {
   let list = ratingCache.get(role)
-  if (list?.weights !== role.weights || list.positions !== role.positions) {
+  if (list?.weights !== role.weights || list.positions !== role.positions || list.version !== paramsVersion) {
     const goalkeeper = role.positions.includes('GK')
     const keys = goalkeeper ? ALL_ATTRIBUTES : ALL_ATTRIBUTES.filter((a) => !GOALKEEPING.has(a))
     const own = new Map(roleWeights(role))
     const others = keys.filter((a) => !own.has(a))
     const roleTotal = [...own.values()].reduce((s, w) => s + w, 0)
     // rôle sans poids : simple moyenne de tous les attributs
-    const other = roleTotal > 0 ? (roleTotal * OTHER_ATTRIBUTES_SHARE) / (1 - OTHER_ATTRIBUTES_SHARE) / others.length : 1
+    const share = params.otherShare
+    const other = roleTotal > 0 ? (roleTotal * share) / (1 - share) / others.length : 1
     const weights = keys.map((a) => [a, own.get(a) ?? other] as const)
     // un attribut de gardien mis explicitement dans un rôle de champ reste compté
     for (const [a, w] of own) if (!keys.includes(a)) weights.push([a, w])
-    list = { weights: role.weights, positions: role.positions, list: weights.sort((a, b) => b[1] - a[1]) }
+    list = { weights: role.weights, positions: role.positions, version: paramsVersion, list: weights.sort((a, b) => b[1] - a[1]) }
     ratingCache.set(role, list)
   }
   return list.list
@@ -145,6 +211,7 @@ const GOALKEEPING = new Set<AttributeKey>(attributesOf('goalkeeping'))
 const ratingCache = new WeakMap<RoleDefinition, {
   weights: RoleDefinition['weights']
   positions: RoleDefinition['positions']
+  version: number
   list: readonly (readonly [AttributeKey, number])[]
 }>()
 

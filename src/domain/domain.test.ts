@@ -5,11 +5,14 @@ import { FORMATIONS, getFormation } from './formations'
 import { hungarianMax } from './hungarian'
 import { BACKUPS_PER_SLOT,
   bestEleven, benchPlayer, canPlace, clearEleven, computeLineup, fillEmptySlots, keyAttributesAt, rateAtSlot, copyInPossession, defaultTacticSlots, layoutName, mergePhase, moveSlot, normalizeTacticSlots,
-  narrowHalfSpaceGrid, patchShape, phaseSlots, placePlayer, resolveRole, setAllPinned, setPinned, summarizeLineup,
+  narrowHalfSpaceGrid, optimalTactic, patchShape, phaseSlots, placePlayer, resolveRole, setAllPinned, setPinned, summarizeLineup,
 } from './lineup'
 import { PITCH_COLS, PITCH_ROWS, fieldCells, formationName, positionAt } from './pitch'
 import { POSITIONS, isPosition, type Position } from './positions'
-import { allRoleRatings, familiarityFactor, nextWeight, OTHER_ATTRIBUTES_SHARE, rateRole, scoreFromAverage } from './rating'
+import {
+  allRoleRatings, DEFAULT_RATING_PARAMS, familiarityFactor, nextWeight, normalizeRatingParams, OTHER_ATTRIBUTES_SHARE, rateRole,
+  scoreFromAverage, setRatingParams,
+} from './rating'
 import type { Attributes, Player, TacticSlot } from './types'
 
 let nextId = 1
@@ -260,6 +263,28 @@ describe('hungarianMax', () => {
   })
 })
 
+describe('paramètres de la note', () => {
+  it('les courbes et la part hors rôle réglées changent les notes, puis les valeurs par défaut reviennent', () => {
+    const before = scoreFromAverage(13)
+    setRatingParams({ ...DEFAULT_RATING_PARAMS, ratingCurve: [[1, 0], [20, 100]], neverPlayed: 0.25 })
+    try {
+      expect(scoreFromAverage(13)).toBeCloseTo((12 / 19) * 100)
+      expect(familiarityFactor(undefined)).toBe(0.25)
+    } finally {
+      setRatingParams(DEFAULT_RATING_PARAMS)
+    }
+    expect(scoreFromAverage(13)).toBe(before)
+  })
+
+  it('réglages enregistrés : points triés, valeurs invalides remplacées par défaut', () => {
+    const p = normalizeRatingParams({ otherShare: 2, ratingCurve: [[20, 100], [1, 0], ['x', 3]], familiarityCurve: [[1, 1]] })
+    expect(p.otherShare).toBe(0.9)
+    expect(p.ratingCurve).toEqual([[1, 0], [20, 100]])
+    expect(p.familiarityCurve).toEqual(DEFAULT_RATING_PARAMS.familiarityCurve)
+    expect(normalizeRatingParams(undefined)).toEqual(DEFAULT_RATING_PARAMS)
+  })
+})
+
 describe('computeLineup', () => {
   const f = getFormation('4-3-3')
   const squad: Player[] = [
@@ -283,6 +308,20 @@ describe('computeLineup', () => {
     expect(at('st')).toBe('BU')
     expect(lineup.bench.map((p) => p.name)).toEqual(['BU2'])
     expect(lineup.slots.find((s) => s.slot.id === 'st')!.backups[0].player.name).toBe('BU2')
+  })
+
+  it("la tactique optimale choisit la formation, les rôles et les joueurs de l'effectif", () => {
+    const opt = optimalTactic(squad, DEFAULT_ROLES)
+    expect(opt.formation.id).toBe('4-3-3')
+    const lineup = computeLineup(opt.slots, squad, DEFAULT_ROLES, [], 'ip', false)
+    expect(lineup.slots.find((s) => s.slot.id === 'st')!.starter?.player.name).toBe('BU')
+    expect(lineup.slots.every((s) => s.starter && s.role.positions.includes(s.slot.position))).toBe(true)
+    // chaque rôle est le meilleur du titulaire à son poste : aucun autre rôle du poste ne fait mieux
+    for (const s of lineup.slots) {
+      const others = DEFAULT_ROLES.filter((r) => r.positions.includes(s.slot.position) && (!r.phase || r.phase === 'ip'))
+      for (const r of others) expect(rateRole(s.starter!.player, r, s.slot.position).score).toBeLessThanOrEqual(s.starter!.rating.score)
+    }
+    expect(opt.slots.some((s) => s.lockedPlayerId === squad[squad.length - 1].id)).toBe(false)
   })
 
   it("ne met un remplaçant en doublure que d'un seul poste", () => {

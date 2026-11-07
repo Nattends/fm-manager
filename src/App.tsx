@@ -1,5 +1,6 @@
-import { Loader2Icon, MonitorIcon, SmartphoneIcon } from 'lucide-react'
+import { Loader2Icon, MonitorIcon, RefreshCwIcon, SmartphoneIcon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { useSaveRefresh } from '@/lib/useSaveRefresh'
 import { cn } from '@/lib/utils'
 import { checkForUpdate } from '@/lib/updates'
 import { applyWindowMode, loadSizeLock, loadWindowMode, setSizeLock, type WindowMode } from '@/lib/windowMode'
@@ -68,6 +69,12 @@ export default function App() {
     setWindowMode(next)
     applyWindowMode(next).catch((e) => console.warn('Changement de taille de fenêtre', e))
   }
+  // Rafraîchissement rapide : la page est remontée ensuite (scouting et jeunes relisent leurs données).
+  const { refreshing, refresh } = useSaveRefresh()
+  const [refreshCount, setRefreshCount] = useState(0)
+  const quickRefresh = async () => {
+    if (await refresh()) setRefreshCount((n) => n + 1)
+  }
   const setPage = (id: PageId) => {
     setPageState(id)
     try { localStorage.setItem(PAGE_KEY, id) } catch { /* ignoré */ }
@@ -110,6 +117,13 @@ export default function App() {
                 {t.photo.searching}
               </span>
             )}
+            {!loading && !error && (
+              <button onClick={quickRefresh} disabled={refreshing} title={t.nav.quickRefreshTitle}
+                className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-slate-200 disabled:opacity-60">
+                <RefreshCwIcon className={cn('size-3.5', refreshing && 'animate-spin')} />
+                {refreshing ? t.settings.refreshing : t.nav.quickRefresh}
+              </button>
+            )}
             <button onClick={toggleWindowMode}
               title={windowMode === 'portrait' ? t.nav.standardModeTitle : t.nav.portraitModeTitle}
               className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-slate-200">
@@ -139,7 +153,7 @@ export default function App() {
             </div>
           ) : (
             // Changer de club remonte la page (la tactique en cours est celle du nouveau club).
-            <Page key={`${page}:${activeClub.id}`} />
+            <Page key={`${page}:${activeClub.id}:${refreshCount}`} />
           )}
         </main>
         <Toaster position="bottom-right" richColors />

@@ -1,6 +1,6 @@
 import { DEFAULT_ROLE_BY_POSITION, DEFAULT_ROLES, defaultRoleFor } from './defaultRoles'
 import {
-  CUSTOM_FORMATION_ID, getFormation, makeSlot, matchPreset, type Formation, type FormationSlot,
+  CUSTOM_FORMATION_ID, FORMATIONS, getFormation, makeSlot, matchPreset, type Formation, type FormationSlot,
 } from './formations'
 import { hungarianMax } from './hungarian'
 import { formationName, isFieldCell, narrowCells, positionAt } from './pitch'
@@ -364,6 +364,69 @@ export function fillEmptySlots(slots: TacticSlot[], players: Player[], roles: Ro
 /** Remplace tout le XI par le meilleur effectif possible (placements et joueurs écartés oubliés). */
 export function bestEleven(slots: TacticSlot[], players: Player[], roles: RoleDefinition[]): Assignment {
   return { slots: fillEmptySlots(clearEleven(slots), players, roles, []), excludedPlayerIds: [] }
+}
+
+/** Tactique optimale : formation, rôles et joueurs choisis ensemble. */
+export interface OptimalTactic {
+  formation: Formation
+  slots: TacticSlot[]
+  /** Somme des notes globales des titulaires. */
+  totalScore: number
+}
+
+/**
+ * Cherche la tactique la mieux notée pour l'effectif : pour chaque formation prédéfinie, chaque joueur
+ * prend à chaque poste son meilleur rôle avec ballon et son meilleur rôle sans ballon (le choix du rôle
+ * ne dépend que du joueur), puis l'affectation optimale (algorithme hongrois) choisit le XI.
+ * La formation retenue est celle dont la somme des notes globales est la plus haute ; sans ballon,
+ * chaque poste garde sa case. Les joueurs choisis sont placés (verrouillés).
+ */
+export function optimalTactic(players: Player[], roles: RoleDefinition[], excludedPlayerIds: number[] = []): OptimalTactic {
+  const excluded = new Set(excludedPlayerIds)
+  const pool = players.filter((p) => isAvailable(p) && !excluded.has(p.id))
+  const fits = (r: RoleDefinition, position: Position, phase: Phase) => r.positions.includes(position) && (!r.phase || r.phase === phase)
+
+  // Meilleur rôle de chaque joueur par poste et par phase (les postes reviennent d'une formation à l'autre).
+  const cache = new Map<string, { roleId: string; score: number }>()
+  const best = (p: Player, position: Position, phase: Phase) => {
+    const key = `${p.id}:${position}:${phase}`
+    let hit = cache.get(key)
+    if (!hit) {
+      hit = { roleId: defaultRoleFor(position, phase), score: -1 }
+      for (const r of roles) {
+        if (!fits(r, position, phase)) continue
+        const score = rateRole(p, r, position).score
+        if (score > hit.score) hit = { roleId: r.id, score }
+      }
+      cache.set(key, hit)
+    }
+    return hit
+  }
+  const overall = (p: Player, position: Position) => (best(p, position, 'ip').score + best(p, position, 'oop').score) / 2
+
+  let result: OptimalTactic | null = null
+  for (const formation of FORMATIONS) {
+    const slots = defaultTacticSlots(formation)
+    let totalScore = 0
+    if (pool.length > 0) {
+      const padding = Math.max(0, formation.slots.length - pool.length)
+      const matrix = formation.slots.map((fs) => [...pool.map((p) => overall(p, fs.position)), ...new Array<number>(padding).fill(0)])
+      hungarianMax(matrix).forEach((col, i) => {
+        if (col >= pool.length) return
+        const p = pool[col]
+        const position = formation.slots[i].position
+        totalScore += matrix[i][col]
+        slots[i] = {
+          ...slots[i],
+          roleId: best(p, position, 'ip').roleId,
+          oop: { ...slots[i].oop, roleId: best(p, position, 'oop').roleId },
+          lockedPlayerId: p.id,
+        }
+      })
+    }
+    if (!result || totalScore > result.totalScore) result = { formation, slots, totalScore: Math.round(totalScore * 10) / 10 }
+  }
+  return result!
 }
 
 /** Retire tous les joueurs du terrain. */

@@ -5,7 +5,7 @@ import {
 } from './fmSave'
 import { normalizeText } from './photoMatch'
 import type { Position } from './positions'
-import { familiarityFactor, ratingWeights, rateWith, scoreFromAverage, type RoleRating } from './rating'
+import { familiarityFactor, ratingParamsVersion, ratingWeights, rateWith, scoreFromAverage, type RoleRating } from './rating'
 import type { Foot, Player, RoleDefinition } from './types'
 
 /**
@@ -310,12 +310,12 @@ function bestOf(p: ScoutPlayer, roles: CompiledRole[]): { score: number; role: n
   return best
 }
 
-const bestCache = new WeakMap<ScoutDb, { roles: RoleDefinition[]; scores: Float32Array; best: Int16Array }>()
+const bestCache = new WeakMap<ScoutDb, { roles: RoleDefinition[]; version: number; scores: Float32Array; best: Int16Array }>()
 
 /** Meilleure note de tous les joueurs sur tous les rôles (calculée une fois par base et par liste de rôles). */
 function bestAll(db: ScoutDb, roles: RoleDefinition[], compiled: CompiledRole[]) {
   let entry = bestCache.get(db)
-  if (entry?.roles !== roles) {
+  if (entry?.roles !== roles || entry.version !== ratingParamsVersion()) {
     const scores = new Float32Array(db.players.length)
     const best = new Int16Array(db.players.length)
     for (const p of db.players) {
@@ -323,7 +323,7 @@ function bestAll(db: ScoutDb, roles: RoleDefinition[], compiled: CompiledRole[])
       scores[p.index] = b.score
       best[p.index] = b.role
     }
-    entry = { roles, scores, best }
+    entry = { roles, version: ratingParamsVersion(), scores, best }
     bestCache.set(db, entry)
   }
   return entry
@@ -332,7 +332,7 @@ function bestAll(db: ScoutDb, roles: RoleDefinition[], compiled: CompiledRole[])
 /** Meilleure note de chaque joueur de la base (par `index`) et rôle de cette note (-1 = aucun), gardées en mémoire par liste de rôles. */
 export function bestScores(db: ScoutDb, roles: RoleDefinition[]): { scores: Float32Array; best: Int16Array } {
   const entry = bestCache.get(db)
-  return entry?.roles === roles ? entry : bestAll(db, roles, roles.map(compileRole))
+  return entry?.roles === roles && entry.version === ratingParamsVersion() ? entry : bestAll(db, roles, roles.map(compileRole))
 }
 
 /** Note rapide d'un rôle, avec la familiarité au poste donné (sinon au meilleur poste du rôle), pour noter toute la base. */
