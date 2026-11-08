@@ -94,10 +94,10 @@ export function ClubComparePage() {
       {!left || !right ? (
         <EmptyState message={t.clubCompare.empty} />
       ) : (
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 lg:px-5">
           <Verdict left={left} right={right} nameA={name(left.club)} nameB={name(right.club)} />
 
-          <div className="mt-5 grid grid-cols-[minmax(0,5fr)_minmax(0,7fr)] gap-6">
+          <div className="mt-5 grid gap-6 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
             <section>
               <SectionTitle>{t.clubCompare.summary}</SectionTitle>
               <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-x-3 gap-y-0.5 text-[13px]">
@@ -198,7 +198,7 @@ function Metric({ label, title, a, b, text, strong, neutral, lowerIsBetter }: {
 function SlotRow({ label, oopRole, a, b }: { label: string; oopRole: string | null; a: LineupSlot; b: LineupSlot }) {
   const diff = Math.round(b.starter?.overall ?? 0) - Math.round(a.starter?.overall ?? 0)
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_9rem_minmax(0,1fr)] items-center gap-3 rounded-md px-2 py-1 odd:bg-secondary/25">
+    <div className="grid grid-cols-[minmax(0,1fr)_7rem_minmax(0,1fr)] items-center gap-2 lg:grid-cols-[minmax(0,1fr)_9rem_minmax(0,1fr)] lg:gap-3 rounded-md px-2 py-1 odd:bg-secondary/25">
       <Starter starter={a.starter} backup={a.backups[0] ?? null} />
       <span className="min-w-0 text-center">
         <span className="block truncate text-[11px] text-slate-300" title={label}>{label}</span>

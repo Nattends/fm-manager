@@ -45,7 +45,7 @@ export function ClubSwitcher() {
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button className="flex h-8 max-w-56 items-center gap-2 rounded-md px-2 text-sm font-semibold text-slate-100 transition-colors hover:bg-secondary">
+          <button className="flex h-8 max-w-40 min-w-0 items-center lg:max-w-56 gap-2 rounded-md px-2 text-sm font-semibold text-slate-100 transition-colors hover:bg-secondary">
             <ClubLogo name={activeClub.name} size={22} />
             <span className="truncate">{activeClub.name}</span>
             <ChevronsUpDownIcon className="size-3.5 shrink-0 text-muted-foreground" />

@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { EmptyState, PageHeader } from '@/components/layout'
+import { DetailPane, EmptyState, PageHeader } from '@/components/layout'
 import { Flag } from '@/components/Nationality'
 import { PlayerDetail } from '@/components/PlayerDetail'
 import { AvgRating } from '@/components/ui'
@@ -23,7 +23,7 @@ import { loadScouting } from '@/data/fmSave'
 import { PositionChip } from '@/components/chips'
 import { isoDate } from '@/domain/fmSave'
 import {
-  buildModel, DEFAULT_WEIGHTS, evaluateMoneyball, knownValue, modelParamsKey, moneyballDescending, OUTPUT_GROUP_OF, primaryPosition, rankMoneyball, reachOf,
+  buildModel, DEFAULT_WEIGHTS, evaluateMoneyball, knownValue, modelParamsKey, moneyballDescending, OUTPUT_GROUP_OF, OUTPUT_PCT_STATS, primaryPosition, rankMoneyball, reachOf,
   statValue, squadClubIndex, teamSlots,
   type MoneyballModel, type MoneyballParams, type MoneyballRow, type MoneyballSort, type MoneyballWeights, type OutputStat, type TeamSlot,
 } from '@/domain/moneyball'
@@ -94,7 +94,7 @@ function Breakdown({ row, model, params, slotText, clubLine, onClose }: {
   // stats du rendement de son poste, avec la moyenne des joueurs du même poste
   const stats = group && p.stats ? (Object.keys(model.output.weights[group]) as OutputStat[]) : []
   const fmt = (stat: OutputStat, v: number | null | undefined) => v === null || v === undefined ? '–'
-    : stat === 'passPct' ? `${Math.round(v)} %`
+    : OUTPUT_PCT_STATS.includes(stat) ? `${Math.round(v)} %`
     : v.toLocaleString(lang, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   return (
     <div className="space-y-2 border-b border-border p-4">
@@ -437,7 +437,7 @@ export function MoneyballPage() {
         </DropdownMenu>
       </PageHeader>
 
-      <div className="flex min-h-0 flex-1">
+      <div className="relative flex min-h-0 flex-1">
         <div className="min-w-0 flex-1 overflow-auto">
           {!result ? (
             <div className="flex items-center gap-2 p-6 text-muted-foreground"><Loader2Icon className="size-4 animate-spin" />{t.moneyball.computing}</div>
@@ -454,7 +454,7 @@ export function MoneyballPage() {
                         return (
                           <ReorderableTh key={c.id} columnId={c.id} colWidths={colWidths} onClick={c.sort ? () => sortBy(c.sort!) : undefined}
                             title={[c.title, t.columns.hint].filter(Boolean).join(' — ')}
-                            className={cn('px-2.5 py-2 whitespace-nowrap', c.right ? 'text-right' : 'text-left', c.sort && 'cursor-pointer hover:text-slate-200', active && 'text-slate-200')}>
+                            className={cn('px-2.5 py-2 align-bottom leading-tight', c.right ? 'text-right' : 'text-left', c.sort && 'cursor-pointer hover:text-slate-200', active && 'text-slate-200')}>
                             <span className={cn('inline-flex items-center gap-1', c.right && 'flex-row-reverse')}>
                               {c.label}
                               {active && (down ? <ArrowDownIcon className="size-3" /> : <ArrowUpIcon className="size-3" />)}
@@ -484,11 +484,11 @@ export function MoneyballPage() {
         </div>
         {/* panneau latéral seulement quand un joueur est sélectionné */}
         {current && selectedPlayer && model && (
-          <aside className="w-[26rem] shrink-0 overflow-y-auto border-l border-border bg-card/40">
+          <DetailPane open onClose={() => setSelected(null)} closeLabel={t.common.close} closeButton={false}>
             <Breakdown row={current} model={model} params={params} slotText={slotText} onClose={() => setSelected(null)}
               clubLine={t.moneyball.clubLevel(level(levelOf(current.player.club)), level(levelOf(ownClub)))} />
             <PlayerDetail player={selectedPlayer} roles={bestRoles} owner={clubName(db, current.player.owner)} onCompare={setComparing} />
-          </aside>
+          </DetailPane>
         )}
       </div>
       {comparing && <CompareDialog first={comparing} source="club" onClose={() => setComparing(null)} />}

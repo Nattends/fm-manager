@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
-import { EmptyState, PageHeader } from '@/components/layout'
+import { DetailPane, EmptyState, PageHeader } from '@/components/layout'
 import { PositionChip } from '@/components/chips'
 import { Flag } from '@/components/Nationality'
 import { PlayerDetail } from '@/components/PlayerDetail'
@@ -123,7 +123,7 @@ export function YouthPage() {
       ) : rows.length === 0 ? (
         <EmptyState message={t.youth.empty} />
       ) : (
-        <div className="flex min-h-0 flex-1">
+        <div className="relative flex min-h-0 flex-1">
           <div className="min-w-0 flex-1 overflow-auto">
             <table className="w-full text-[13px]">
               <thead className="sticky top-0 z-10 bg-card text-left text-xs text-muted-foreground">
@@ -164,11 +164,9 @@ export function YouthPage() {
               </tbody>
             </table>
           </div>
-          <aside className="w-[26rem] shrink-0 overflow-y-auto border-l border-border bg-card/40">
-            {selected
-              ? <PlayerDetail player={selected} roles={bestRoles} onCompare={setComparing} />
-              : <EmptyState message={t.scouting.selectHint} />}
-          </aside>
+          <DetailPane open={!!selected} onClose={() => setSelected(null)} closeLabel={t.common.close}>
+            {selected && <PlayerDetail player={selected} roles={bestRoles} onCompare={setComparing} />}
+          </DetailPane>
         </div>
       )}
       {comparing && <CompareDialog first={comparing} source="club" onClose={() => setComparing(null)} />}

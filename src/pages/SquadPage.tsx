@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import { Switch } from '@/components/ui/switch'
 import { EmptyState, PageHeader } from '@/components/layout'
 import { PositionChip, StatusBadge } from '@/components/chips'
 import { ColumnDnd, ReorderableTh } from '@/components/ReorderableColumns'
@@ -46,15 +46,12 @@ const PLAYS_AT = 14
 const VISIBILITY_KEY = 'squad.columns'
 const ORDER_KEY = 'squad.columnOrder'
 const WIDTHS_KEY = 'squad.columnWidths'
-const VIEW_KEY = 'squad.view'
-type SquadView = 'all' | 'squad' | 'loaned'
+const INCLUDE_LOANED_KEY = 'squad.includeLoaned'
+/** Sous-onglet affiché : joueurs présents au club, ou prêtés (hors effectif). */
+export type SquadView = 'squad' | 'loaned'
 
-function loadView(): SquadView {
-  try {
-    const v = localStorage.getItem(VIEW_KEY)
-    if (v === 'all' || v === 'squad' || v === 'loaned') return v
-  } catch { /* stockage indisponible */ }
-  return 'squad'
+function loadIncludeLoaned(): boolean {
+  try { return localStorage.getItem(INCLUDE_LOANED_KEY) === '1' } catch { return false }
 }
 const ALL = 'all'
 const STATUSES: PlayerStatus[] = ['key', 'rotation', 'prospect', 'for_sale', 'unavailable']
@@ -81,7 +78,7 @@ function loadVisibility(): VisibilityState {
   return defaultVisibility()
 }
 
-export function SquadPage() {
+export function SquadPage({ view }: { view: SquadView }) {
   const { players, roles } = useStore()
   const { t, lang, roleName, money, date } = useI18n()
   const [search, setSearch] = useState('')
@@ -96,11 +93,11 @@ export function SquadPage() {
   const [importing, setImporting] = useState(false)
   const [importingSave, setImportingSave] = useState(false)
   const [openId, setOpenId] = useState<number | null>(null)
-  /** Tous les joueurs du club, ceux présents au club ou ceux prêtés (hors effectif). */
-  const [view, setView] = useState<SquadView>(loadView)
-  const changeView = (v: SquadView) => {
-    setView(v)
-    try { localStorage.setItem(VIEW_KEY, v) } catch { /* ignoré */ }
+  /** Équipe première : ajoute aussi les joueurs prêtés (ancienne vue « Tous »). */
+  const [includeLoaned, setIncludeLoaned] = useState(loadIncludeLoaned)
+  const changeIncludeLoaned = (on: boolean) => {
+    setIncludeLoaned(on)
+    try { localStorage.setItem(INCLUDE_LOANED_KEY, on ? '1' : '0') } catch { /* ignoré */ }
   }
   const loanedCount = players.filter((p) => p.onLoan).length
   const squadCount = players.length - loanedCount
@@ -121,13 +118,13 @@ export function SquadPage() {
   const rows = useMemo<Row[]>(() => {
     const max = Number(ageMax)
     return players
-      .filter((p) => view === 'all' || p.onLoan === (view === 'loaned'))
+      .filter((p) => (view === 'loaned' ? p.onLoan : includeLoaned || !p.onLoan))
       .filter((p) => matchesSearch(search, p.name, nationalityLabel(p.nationality, lang), p.club))
       .filter((p) => position === ALL || (p.positions[position] ?? 0) >= PLAYS_AT)
       .filter((p) => status === ALL || p.status === status)
       .filter((p) => !ageMax || p.age <= max)
       .map((player) => ({ player, best: bestRole(player, roles) }))
-  }, [players, roles, view, lang, search, position, status, ageMax])
+  }, [players, roles, view, includeLoaned, lang, search, position, status, ageMax])
 
   const columns = useMemo(() => [
     col.accessor((r) => r.player.name, {
@@ -228,7 +225,8 @@ export function SquadPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <PageHeader title={t.squad.title} count={t.squad.count(squadCount)}
+      <PageHeader title={view === 'loaned' ? t.nav.sub.loaned : t.nav.sub.first}
+        count={t.squad.count(view === 'loaned' ? loanedCount : squadCount)}
         actions={(
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={() => setImportingSave(true)}><HardDriveDownloadIcon />{t.fmSave.button}</Button>
@@ -236,12 +234,6 @@ export function SquadPage() {
             <Button onClick={() => setCreating(true)}><PlusIcon />{t.squad.addPlayer}</Button>
           </div>
         )}>
-        <ToggleGroup type="single" variant="outline" size="sm" value={view}
-          onValueChange={(v) => v && changeView(v as SquadView)}>
-          <ToggleGroupItem value="all">{t.squad.viewAll(players.length)}</ToggleGroupItem>
-          <ToggleGroupItem value="squad">{t.squad.viewSquad(squadCount)}</ToggleGroupItem>
-          <ToggleGroupItem value="loaned">{t.squad.viewLoaned(loanedCount)}</ToggleGroupItem>
-        </ToggleGroup>
         <div className="relative">
           <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input className="h-8 w-56 pl-8" placeholder={t.squad.search} value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -262,6 +254,11 @@ export function SquadPage() {
         </Select>
         <Input className="h-8 w-24" type="number" min={14} max={45} placeholder={t.squad.maxAge} value={ageMax}
           onChange={(e) => setAgeMax(e.target.value)} />
+        {view === 'squad' && loanedCount > 0 && (
+          <label className="flex items-center gap-2 text-xs text-slate-300">
+            <Switch checked={includeLoaned} onCheckedChange={changeIncludeLoaned} />{t.squad.includeLoaned(loanedCount)}
+          </label>
+        )}
         {filtered && (
           <Button variant="ghost" size="sm" onClick={resetFilters}><XIcon />{t.squad.resetFilters}</Button>
         )}

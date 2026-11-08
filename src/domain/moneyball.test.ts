@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   AGE_BANDS, buildOutput, contractDays, DEFAULT_MONEYBALL_PARAMS, DEPTH_SHARE, evaluate, expectedScore, feeFactor, fitCurve, outputPoints, primaryPosition, reachOf,
-  normalizeMoneyballParams, OUTPUT_WEIGHTS, rankMoneyball, readCurve, regress2, slotGain, squadClubIndex, statValue, withinReach, type MoneyballModel, type TeamSlot,
+  normalizeMoneyballParams, outputIndex, OUTPUT_WEIGHTS, rankMoneyball, readCurve, regress2, slotGain, squadClubIndex, statValue, withinReach, type MoneyballModel, type TeamSlot,
 } from './moneyball'
 import type { ScoutDb, ScoutPlayer } from './scouting'
 import type { Player, RoleDefinition } from './types'
@@ -64,7 +64,8 @@ describe('gain d\'équipe', () => {
 describe('rendement', () => {
   const stats = (over: Partial<NonNullable<ScoutPlayer['stats']>> = {}): ScoutPlayer['stats'] => ({
     minutes: 1800, starts: 20, subs: 0, goals: 8, assists: 2, pom: 1, passes: 400, passesDone: 300, tackles: 20, tacklesWon: 10,
-    dribbles: 20, shots: 40, shotsOnTarget: 15, xg: 8, xa: 2, ...over,
+    dribbles: 20, shots: 40, shotsOnTarget: 15, xg: 8, xa: 2, extended: true,
+    fouls: 0, fouled: 0, aerials: 0, aerialsWon: 0, offsides: 0, crosses: 0, crossesDone: 0, saves: 0, conceded: 0, ...over,
   })
 
   it('ramène les stats à 90 minutes', () => {
@@ -79,6 +80,19 @@ describe('rendement', () => {
     expect(statValue(bare, 'passPct')).toBeNull()
     expect(statValue(bare, 'goals')).toBeCloseTo(0.4)
     expect(statValue(scout({}), 'xg')).toBeNull()
+  })
+
+  it('gardiens : % d\'arrêts, buts encaissés comptés en négatif', () => {
+    const gk = (conceded: number) => scout({ pos: 0, stats: stats({ saves: 40, conceded }) })
+    expect(statValue(gk(10), 'savePct')).toBe(80)
+    expect(statValue(gk(10), 'conceded')).toBeCloseTo(0.5)
+    // joueur de champ ou base sans stats étendues : inconnues
+    expect(statValue(scout({ stats: stats() }), 'savePct')).toBeNull()
+    expect(statValue(scout({ stats: stats({ aerials: 20, aerialsWon: 10, extended: false }) }), 'aerialPct')).toBeNull()
+    const norms = new Map([['conceded' as const, { mean: 1, sd: 0.5 }]])
+    const weights = { ...OUTPUT_WEIGHTS, gk: { conceded: 1 } }
+    expect(outputIndex(norms, gk(10), 'gk', weights)).toBeCloseTo(1)
+    expect(outputIndex(norms, gk(30), 'gk', weights)).toBeCloseTo(-1)
   })
 
   it('régression à deux variables', () => {

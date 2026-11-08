@@ -10,12 +10,9 @@ import { getSaveLink } from '@/lib/saveLink'
 import { useSaveRefresh } from '@/lib/useSaveRefresh'
 import { appVersion, checkForUpdate } from '@/lib/updates'
 import { cn } from '@/lib/utils'
-import { loadSizeLock, setSizeLock } from '@/lib/windowMode'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Switch } from '@/components/ui/switch'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ClubLogo } from '@/components/ClubLogo'
 import { ATTR_TIER_COLORS, attrColor } from '@/components/styles'
 import { offerUpdate } from '@/components/updateToast'
@@ -26,16 +23,16 @@ import { INVALID_BACKUP } from '@/data/manualSource'
 import { demoSquad, isDemoPlayer } from '@/domain/demoSquad'
 import { randomTeam } from '@/domain/randomSquad'
 import { useI18n } from '@/i18n'
-import { LANGUAGES } from '@/i18n/languages'
 import { useStore } from '@/store'
 
-export function SettingsPage() {
+export type SettingsSection = 'general' | 'data' | 'rating'
+
+export function SettingsPage({ section }: { section: SettingsSection }) {
   const { players, tactics, clubs, activeClub, createClub, setActiveClub, exportAll, importAll, savePlayer, deletePlayer } = useStore()
   const logoStyle = useLogoStyle()
   const attrThresholds = useAttrThresholds()
-  const { t, lang, setLang } = useI18n()
+  const { t } = useI18n()
   const [demoBusy, setDemoBusy] = useState(false)
-  const [sizeLocked, setSizeLocked] = useState(loadSizeLock)
   const [version, setVersion] = useState('')
   const [checking, setChecking] = useState(false)
   const { refreshing, refresh: runRefresh } = useSaveRefresh()
@@ -63,10 +60,7 @@ export function SettingsPage() {
     setSaveLinkState(getSaveLink(activeClub.id))
   }
 
-  const toggleSizeLock = (locked: boolean) => {
-    setSizeLocked(locked)
-    setSizeLock(locked).catch((e) => toast.error(String(e)))
-  }
+
   const demoCount = players.filter(isDemoPlayer).length
 
   const errorText = (e: unknown) => (e instanceof Error && e.message === INVALID_BACKUP ? t.settings.invalidBackup : String(e))
@@ -141,29 +135,10 @@ export function SettingsPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <PageHeader title={t.settings.title} />
+      <PageHeader title={t.nav.sub[section]} />
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto grid max-w-4xl grid-cols-2 gap-4 p-6">
-          <Panel title={t.settings.language}>
-            <Select value={lang} onValueChange={(v) => setLang(v as typeof lang)}>
-              <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {LANGUAGES.map((l) => <SelectItem key={l.id} value={l.id}>{l.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </Panel>
-
-          <Panel title={t.settings.window} className="col-span-2">
-            <div className="flex items-start gap-3">
-              <Switch id="size-lock" checked={sizeLocked} onCheckedChange={toggleSizeLock} className="mt-0.5" />
-              <div className="space-y-1">
-                <Label htmlFor="size-lock" className="text-sm text-slate-200">{t.settings.sizeLock}</Label>
-                <p className="text-[13px] leading-relaxed text-muted-foreground">
-                  {sizeLocked ? t.settings.sizeLockOn : t.settings.sizeLockOff}
-                </p>
-              </div>
-            </div>
-          </Panel>
+        <div className="mx-auto grid max-w-4xl grid-cols-2 gap-4 p-4 lg:p-6">
+          {section === 'general' && <>
 
           <Panel title={t.settings.logoStyle} className="col-span-2">
             <p className="mb-3 text-[13px] leading-relaxed text-muted-foreground">{t.settings.logoStyleText}</p>
@@ -212,14 +187,16 @@ export function SettingsPage() {
             </div>
           </Panel>
 
-          <Panel title={t.updates.title}>
+          <Panel title={t.updates.title} className="col-span-2">
             <p className="mb-3 text-[13px] leading-relaxed text-muted-foreground">{t.updates.text(version)}</p>
             <Button variant="outline" onClick={checkUpdates} disabled={checking}>
               {checking ? <Loader2Icon className="animate-spin" /> : <RefreshCwIcon />}{t.updates.check}
             </Button>
           </Panel>
+          </>}
 
-          <Panel title={t.settings.dataSource}>
+          {section === 'data' && <>
+          <Panel title={t.settings.dataSource} className="col-span-2">
             <p className="mb-2 text-[13px] leading-relaxed text-muted-foreground">{t.settings.dataSourceText}</p>
             <p className="mb-3 truncate text-xs text-slate-400" title={saveLink?.path}>
               {saveLink ? t.settings.linkedSave(saveLink.path.split(/[\\/]/).pop() ?? saveLink.path) : t.settings.noLinkedSave}
@@ -255,13 +232,13 @@ export function SettingsPage() {
               <Button variant="outline" onClick={generateTeam} disabled={demoBusy}><DicesIcon />{t.settings.randomTeam}</Button>
             </div>
           </Panel>
+          </>}
 
-          <div className="col-span-2 mt-4">
-            <h2 className="text-base font-semibold text-slate-100">{t.scoring.title}</h2>
-            <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">{t.scoring.intro}</p>
-          </div>
+          {section === 'rating' && <>
+          <p className="col-span-2 text-[13px] leading-relaxed text-muted-foreground">{t.scoring.intro}</p>
           <RatingParamsPanel />
           <MoneyballParamsPanel />
+          </>}
         </div>
       </div>
     </div>

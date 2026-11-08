@@ -12,7 +12,7 @@ import { createPortal } from 'react-dom'
 import { toast } from 'sonner'
 import { askConfirm } from '@/lib/confirm'
 import { cn } from '@/lib/utils'
-import { useIsPortrait } from '@/lib/windowMode'
+import { useIsPortrait, useMediaQuery } from '@/lib/windowMode'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -116,7 +116,7 @@ export function TacticPage() {
   const [overSlot, setOverSlot] = useState<{ phase: Phase; slotId: string } | null>(null)
   const [tab, setTab] = useState<PanelTab>('squad')
   const [big, setBigState] = useState(loadBigView)
-  /** Panneau de l'effectif en grande vue (par-dessus le terrain), fermé par défaut. */
+  /** Panneau de l'effectif par-dessus le terrain (grande vue ou fenêtre étroite), fermé par défaut. */
   const [panelOpen, setPanelOpen] = useState(false)
   /** Panneau de l'effectif hors grande vue, à côté ou sous le terrain : masquable, retenu d'une session à l'autre. */
   const [panelShown, setPanelShownState] = useState(loadPanelShown)
@@ -133,6 +133,9 @@ export function TacticPage() {
   // Fenêtre en portrait (écran vertical) : panneau sous le terrain.
   const portrait = useIsPortrait()
   const stacked = portrait && !big
+  // Fenêtre étroite en paysage (moitié d'écran…) : le panneau passe par-dessus le terrain, comme en grande vue.
+  const narrow = useMediaQuery('(max-width: 1199px)')
+  const overlay = big || (narrow && !portrait)
   const setBig = (value: boolean) => {
     setBigState(value)
     try { localStorage.setItem(BIG_VIEW_KEY, value ? '1' : '0') } catch { /* ignoré */ }
@@ -291,8 +294,8 @@ export function TacticPage() {
   const fillXi = () => update({ slots: fillEmptySlots(draft.slots, players, roles, draft.excludedPlayerIds) })
   const bestXi = () => update(bestEleven(draft.slots, players, roles))
   const emptySlots = lineup.slots.filter((s) => !s.starter).length
-  const showPanel = big ? panelOpen : panelShown
-  const togglePanel = () => (big ? setPanelOpen((v) => !v) : setPanelShown(!panelShown))
+  const showPanel = overlay ? panelOpen : panelShown
+  const togglePanel = () => (overlay ? setPanelOpen((v) => !v) : setPanelShown(!panelShown))
 
   return (
     <DndContext sensors={sensors} collisionDetection={pointerWithin}
@@ -389,7 +392,7 @@ export function TacticPage() {
               'flex min-h-0 shrink-0 flex-col gap-3',
               // écran vertical : le terrain garde la plus grande part de la hauteur
               stacked ? 'h-[34%] w-full' : 'w-[370px]',
-              big && 'absolute top-3 right-3 bottom-3 z-30 rounded-xl border border-border bg-background/95 p-3 shadow-2xl backdrop-blur animate-in slide-in-from-right-8 fade-in-0',
+              overlay && 'absolute top-3 right-3 bottom-3 z-30 max-w-[calc(100%-1.5rem)] rounded-xl border border-border bg-background/95 p-3 shadow-2xl backdrop-blur animate-in slide-in-from-right-8 fade-in-0',
             )}>
               <SummaryPanel summary={summary} />
               <Tabs value={tab} onValueChange={(v) => setTab(v as PanelTab)} className="min-h-0 flex-1 gap-0 rounded-lg border border-border bg-card">

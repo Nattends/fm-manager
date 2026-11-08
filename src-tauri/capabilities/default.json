@@ -15,6 +15,7 @@
     "core:window:allow-set-resizable",
     "core:window:allow-set-maximizable",
     "core:window:allow-unmaximize",
+    "core:window:allow-maximize",
     "sql:default",
     "sql:allow-execute",
     "dialog:default",

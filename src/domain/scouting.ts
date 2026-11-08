@@ -6,6 +6,7 @@ import {
 import { normalizeText } from './photoMatch'
 import type { Position } from './positions'
 import { familiarityFactor, ratingParamsVersion, ratingWeights, rateWith, scoreFromAverage, type RoleRating } from './rating'
+import { isSeasonStat, seasonStat, type SeasonStat } from './seasonStats'
 import type { Foot, Player, RoleDefinition } from './types'
 
 /**
@@ -63,6 +64,19 @@ export interface SeasonStats {
   /** Buts et passes décisives attendus. */
   xg: number
   xa: number
+  /** Stats ci-dessous connues (base FMS6 et plus) ; à 0 sinon. */
+  extended: boolean
+  fouls: number
+  fouled: number
+  /** Duels aériens disputés et gagnés. */
+  aerials: number
+  aerialsWon: number
+  offsides: number
+  crosses: number
+  crossesDone: number
+  /** Gardiens : arrêts et buts encaissés (0 pour un joueur de champ). */
+  saves: number
+  conceded: number
 }
 
 export interface ScoutDb {
@@ -75,10 +89,11 @@ export interface ScoutDb {
 
 /**
  * FMS3 ajoute la valeur de transfert après le salaire, FMS4 la note moyenne de la saison (somme des notes×10 u16, matchs u8)
- * après la valeur, FMS5 les stats de la saison après la note (minutes u16, 5 × u8, 9 × u16 : voir SeasonStats) ;
- * FMS2 (bases plus anciennes) n'a rien de tout ça.
+ * après la valeur, FMS5 les stats de la saison après la note (minutes u16, 5 × u8, 9 × u16 : voir SeasonStats),
+ * FMS6 les stats étendues après xA (7 × u16 : fautes, subies, duels aériens, gagnés, hors-jeu, centres, réussis ;
+ * 2 × u8 : arrêts, buts encaissés) ; FMS2 (bases plus anciennes) n'a rien de tout ça.
  */
-const MAGICS = ['FMS2', 'FMS3', 'FMS4', 'FMS5']
+const MAGICS = ['FMS2', 'FMS3', 'FMS4', 'FMS5', 'FMS6']
 const NONE = 0xffffffff
 
 /** Décode la base enregistrée ; null si elle est vide ou d'un autre format. */
@@ -86,8 +101,9 @@ export function decodeScouting(bytes: Uint8Array): ScoutDb | null {
   const magic = bytes.length >= 8 ? String.fromCharCode(...bytes.subarray(0, 4)) : ''
   if (!MAGICS.includes(magic)) return null
   const withValue = magic !== 'FMS2'
-  const withRating = magic === 'FMS4' || magic === 'FMS5'
-  const withStats = magic === 'FMS5'
+  const withRating = magic >= 'FMS4'
+  const withStats = magic >= 'FMS5'
+  const extended = magic >= 'FMS6'
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   const utf8 = new TextDecoder()
   let p = 4
@@ -125,7 +141,17 @@ export function decodeScouting(bytes: Uint8Array): ScoutDb | null {
       const [starts, subs, goals, assists, pom] = bytes.subarray(p, p + 5)
       p += 5
       const [passes, passesDone, tackles, tacklesWon, dribbles, shots, shotsOnTarget, xg, xa] = Array.from({ length: 9 }, u16)
-      if (minutes) stats = { minutes, starts, subs, goals, assists, pom, passes, passesDone, tackles, tacklesWon, dribbles, shots, shotsOnTarget, xg: xg / 100, xa: xa / 100 }
+      const [fouls, fouled, aerials, aerialsWon, offsides, crosses, crossesDone] = Array.from({ length: extended ? 7 : 0 }, u16)
+      const [saves, conceded] = extended ? [bytes[p], bytes[p + 1]] : []
+      if (extended) p += 2
+      if (minutes) {
+        stats = {
+          minutes, starts, subs, goals, assists, pom, passes, passesDone, tackles, tacklesWon, dribbles, shots, shotsOnTarget,
+          xg: xg / 100, xa: xa / 100, extended,
+          fouls: fouls ?? 0, fouled: fouled ?? 0, aerials: aerials ?? 0, aerialsWon: aerialsWon ?? 0, offsides: offsides ?? 0,
+          crosses: crosses ?? 0, crossesDone: crossesDone ?? 0, saves: saves ?? 0, conceded: conceded ?? 0,
+        }
+      }
     }
     const name = text(bytes[p++])
     players.push({
@@ -204,7 +230,7 @@ export function scoutToday(db: ScoutDb): GameDate {
   return db.gameDate ?? todayGameDate()
 }
 
-export type ScoutSort = 'rating' | 'avgRating' | 'age' | 'name' | 'club' | 'foot' | 'contract' | 'wage' | 'value'
+export type ScoutSort = 'rating' | 'avgRating' | 'age' | 'name' | 'club' | 'foot' | 'contract' | 'wage' | 'value' | SeasonStat
 
 /** Sens d'un premier clic sur une colonne : meilleures valeurs d'abord ; alphabétique, plus jeunes et contrats les plus courts d'abord. */
 export function defaultDescending(sort: ScoutSort): boolean {
@@ -235,6 +261,8 @@ export interface ScoutFilters {
   clubNation: string | null
   /** Masque les joueurs prêtés par leur club. */
   hideLoaned: boolean
+  /** Minutes jouées cette saison au minimum ; absent ou null = pas de minimum. */
+  minMinutes?: number | null
   /** Clés (`scoutKey`) des seuls joueurs gardés, par exemple la shortlist ; absent ou null = tous. */
   only?: ReadonlySet<string> | null
   sort: ScoutSort
@@ -370,6 +398,7 @@ export function searchScouts(db: ScoutDb, f: ScoutFilters, today: GameDate, free
   const found: { player: ScoutPlayer; age: number; score: number; role: RoleDefinition | null }[] = []
   for (const p of db.players) {
     if (f.hideLoaned && p.owner >= 0) continue
+    if (f.minMinutes && (p.stats?.minutes ?? 0) < f.minMinutes) continue
     if (f.only && !f.only.has(scoutKey(p))) continue
     if (clubQ) {
       const ok = p.club >= 0 ? clubMatch[p.club] : free !== '' && free.startsWith(clubQ)
@@ -395,7 +424,7 @@ export function searchScouts(db: ScoutDb, f: ScoutFilters, today: GameDate, free
   type Found = (typeof found)[number]
   const byName = (a: Found, b: Found) => a.player.name.localeCompare(b.player.name)
   // valeur de tri de chaque colonne ; null = inconnue (toujours classée en dernier, quel que soit le sens)
-  const sortKey: Record<ScoutSort, (r: Found) => number | string | null> = {
+  const sortKey: Record<Exclude<ScoutSort, SeasonStat>, (r: Found) => number | string | null> = {
     rating: (r) => r.score,
     avgRating: (r) => r.player.avgRating,
     age: (r) => r.age,
@@ -406,7 +435,8 @@ export function searchScouts(db: ScoutDb, f: ScoutFilters, today: GameDate, free
     wage: (r) => r.player.wage,
     value: (r) => r.player.value,
   }
-  const key = sortKey[f.sort]
+  const stat = f.sort
+  const key = isSeasonStat(stat) ? (r: Found) => seasonStat(r.player, stat) : sortKey[stat]
   const dir = (f.desc ?? defaultDescending(f.sort)) ? -1 : 1
   found.sort((a, b) => {
     const x = key(a)

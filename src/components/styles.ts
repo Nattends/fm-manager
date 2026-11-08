@@ -29,6 +29,15 @@ export function scoreText(score: number): string {
   return scoreColor(score).split(' ').find((c) => c.startsWith('text-')) ?? ''
 }
 
+/** Barre de percentile d'une stat (0-100) : comparé aux joueurs du même poste. */
+export function percentileColor(p: number): string {
+  if (p >= 80) return 'bg-emerald-400'
+  if (p >= 60) return 'bg-lime-400'
+  if (p >= 40) return 'bg-amber-400'
+  if (p >= 20) return 'bg-orange-400'
+  return 'bg-rose-500'
+}
+
 /** Note sur fond plein (cartes du terrain) : plus lisible sur une photo ou un fond coloré. */
 export function scoreSolid(score: number): string {
   if (score >= 88) return 'bg-cyan-400 text-cyan-950 ring-cyan-300'

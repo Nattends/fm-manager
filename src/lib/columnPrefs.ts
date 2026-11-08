@@ -13,7 +13,9 @@ export function loadColumnLayout(key: string, defaults: readonly string[], defau
       const stored: unknown = JSON.parse(raw)
       if (stored && typeof stored === 'object') {
         const { order, hidden } = stored as Record<string, unknown>
-        return { order: normalizeOrder(order, defaults), hidden: normalizeHidden(hidden, defaults) }
+        // colonnes apparues depuis l'enregistrement : masquées si elles le sont par défaut
+        const fresh = defaultHidden.filter((id) => !(Array.isArray(order) && order.includes(id)))
+        return { order: normalizeOrder(order, defaults), hidden: [...normalizeHidden(hidden, defaults), ...fresh] }
       }
     }
   } catch { /* stockage indisponible ou contenu illisible */ }

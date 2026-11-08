@@ -6,15 +6,17 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
-  DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Switch } from '@/components/ui/switch'
-import { EmptyState, PageHeader } from '@/components/layout'
+import { DetailPane, EmptyState, PageHeader } from '@/components/layout'
 import { PositionChip } from '@/components/chips'
 import { Flag, NationalityPicker } from '@/components/Nationality'
 import { ColumnDnd, ReorderableTh } from '@/components/ReorderableColumns'
 import { useColumnWidths } from '@/lib/useColumnWidths'
 import { PlayerDetail } from '@/components/PlayerDetail'
+import { ScoutStats } from '@/components/ScoutStats'
+import { formatStat, isSeasonStat, SEASON_STATS, seasonStat, type SeasonStat } from '@/domain/seasonStats'
 import { useValueFormat } from '@/lib/useValueFormat'
 import { RoleSelect } from '@/components/RoleSelect'
 import { AvgRating, RatingBadge } from '@/components/ui'
@@ -38,8 +40,13 @@ import { CompareDialog } from './CompareDialog'
 const LIMIT = 200
 
 /** Colonnes du tableau ; chacune (sauf les postes) sert aussi de critère de tri. */
-type ScoutColumn = 'name' | 'age' | 'club' | 'positions' | 'foot' | 'contract' | 'wage' | 'value' | 'avgRating' | 'rating'
-const SCOUT_COLUMNS: ScoutColumn[] = ['name', 'age', 'club', 'positions', 'foot', 'contract', 'wage', 'value', 'avgRating', 'rating']
+type BaseColumn = 'name' | 'age' | 'club' | 'positions' | 'foot' | 'contract' | 'wage' | 'value' | 'avgRating' | 'rating'
+type ScoutColumn = BaseColumn | SeasonStat
+const BASE_COLUMNS: BaseColumn[] = ['name', 'age', 'club', 'positions', 'foot', 'contract', 'wage', 'value', 'avgRating', 'rating']
+const SCOUT_COLUMNS: ScoutColumn[] = [...BASE_COLUMNS, ...SEASON_STATS]
+/** Stats affichées par défaut ; les autres s'ajoutent depuis le menu « Columns ». */
+const DEFAULT_STATS: SeasonStat[] = ['minutes', 'goals', 'assists']
+const HIDDEN_COLUMNS = SEASON_STATS.filter((s) => !DEFAULT_STATS.includes(s))
 const COLUMNS_KEY = 'scouting.columns'
 const WIDTHS_KEY = 'scouting.columnWidths'
 const sortOf = (c: ScoutColumn): ScoutSort | null => (c === 'positions' ? null : c)
@@ -108,7 +115,8 @@ export function ScoutingPage() {
   const [sort, setSort] = useState<ScoutSort>('rating')
   /** Sens du tri choisi en cliquant à nouveau sur la colonne ; null = sens par défaut de la colonne. */
   const [desc, setDesc] = useState<boolean | null>(null)
-  const [layout, setLayout] = useState(() => loadColumnLayout(COLUMNS_KEY, SCOUT_COLUMNS))
+  const [layout, setLayout] = useState(() => loadColumnLayout(COLUMNS_KEY, SCOUT_COLUMNS, HIDDEN_COLUMNS))
+  const [minMinutes, setMinMinutes] = useState('')
   const colWidths = useColumnWidths(WIDTHS_KEY)
   const shortlist = useShortlist(activeClub.id)
   const [onlyShortlist, setOnlyShortlist] = useState(false)
@@ -168,9 +176,10 @@ export function ScoutingPage() {
     return {
       search, positions, role, roles: bestRoles, minAge: num(minAge), maxAge: num(maxAge),
       minWage: num(minWage, 1e3), maxWage: num(maxWage, 1e3), minValue: num(minValue, 1e6), maxValue: num(maxValue, 1e6),
-      nationality: nationality || null, club, clubNation: clubNation || null, hideLoaned, only: onlyShortlist ? shortlist.keys : null, sort, desc, limit: LIMIT,
+      nationality: nationality || null, club, clubNation: clubNation || null, hideLoaned, minMinutes: num(minMinutes),
+      only: onlyShortlist ? shortlist.keys : null, sort, desc, limit: LIMIT,
     }
-  }, [search, positions, role, bestRoles, minAge, maxAge, minWage, maxWage, minValue, maxValue, nationality, club, clubNation, hideLoaned, onlyShortlist, shortlist.keys, sort, desc]))
+  }, [search, positions, role, bestRoles, minAge, maxAge, minWage, maxWage, minValue, maxValue, nationality, club, clubNation, hideLoaned, minMinutes, onlyShortlist, shortlist.keys, sort, desc]))
   /** Clic sur une colonne : la trie ; un second clic inverse le sens. */
   const sortBy = (key: ScoutSort) => {
     if (key === sort) setDesc(!(desc ?? defaultDescending(key)))
@@ -206,8 +215,14 @@ export function ScoutingPage() {
     )
   }
 
+  type ColumnDef = { label: string; title?: string; right?: boolean; cellClass?: string; cell: (r: ScoutRow) => ReactNode }
+  const statColumns = Object.fromEntries(SEASON_STATS.map((stat): [SeasonStat, ColumnDef] => [stat, {
+    label: t.scouting.stat[stat].short, title: t.scouting.stat[stat].long, right: true, cellClass: 'tabular-nums text-slate-300',
+    cell: ({ player: p }) => formatStat(stat, seasonStat(p, stat), lang),
+  }])) as Record<SeasonStat, ColumnDef>
   /** Contenu de chaque colonne du tableau. */
-  const columnDefs: Record<ScoutColumn, { label: string; title?: string; right?: boolean; cellClass?: string; cell: (r: ScoutRow) => ReactNode }> = {
+  const columnDefs: Record<ScoutColumn, ColumnDef> = {
+    ...statColumns,
     name: {
       label: t.fmImport.nameCol, cellClass: 'font-medium',
       cell: ({ player: p }) => (
@@ -300,6 +315,8 @@ export function ScoutingPage() {
         <NationalityPicker value={nationality} onChange={setNationality} className="h-8 w-48" />
         <Input className="h-8 w-40" placeholder={t.scouting.club} value={club} onChange={(e) => setClub(e.target.value)} />
         <NationalityPicker value={clubNation} onChange={setClubNation} placeholder={t.scouting.clubNation} className="h-8 w-48" />
+        <Input className="h-8 w-28" type="number" min={0} step={90} placeholder={t.scouting.minMinutes} title={t.scouting.minMinutesTitle}
+          value={minMinutes} onChange={(e) => setMinMinutes(e.target.value)} />
         <label className="flex items-center gap-2 text-xs text-slate-300">
           <Switch checked={hideLoaned} onCheckedChange={setHideLoaned} />{t.scouting.hideLoaned}
         </label>
@@ -310,22 +327,29 @@ export function ScoutingPage() {
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" className="h-8"><Columns3Icon />{t.squad.columns}</Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            {order.map((id) => (
+          <DropdownMenuContent align="end" className="max-h-[70vh] w-64 overflow-y-auto">
+            {order.filter((id) => !isSeasonStat(id)).map((id) => (
               <DropdownMenuCheckboxItem key={id} checked={!layout.hidden.includes(id)} disabled={id === 'name'}
                 onSelect={(e) => e.preventDefault()} onCheckedChange={(on) => toggleColumn(id, on === true)}>
                 {columnDefs[id].label}
               </DropdownMenuCheckboxItem>
             ))}
             <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => { setLayout({ order: [...SCOUT_COLUMNS], hidden: [] }); colWidths.reset() }}>{t.columns.reset}</DropdownMenuItem>
+            <DropdownMenuLabel>{t.scouting.statColumns}</DropdownMenuLabel>
+            {order.filter(isSeasonStat).map((id) => (
+              <DropdownMenuCheckboxItem key={id} checked={!layout.hidden.includes(id)}
+                onSelect={(e) => e.preventDefault()} onCheckedChange={(on) => toggleColumn(id, on === true)}>
+                {t.scouting.stat[id].long}
+              </DropdownMenuCheckboxItem>
+            ))}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => { setLayout({ order: [...SCOUT_COLUMNS], hidden: [...HIDDEN_COLUMNS] }); colWidths.reset() }}>{t.columns.reset}</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </PageHeader>
 
-      <div className="flex min-h-0 flex-1">
+      <div className="relative flex min-h-0 flex-1">
         <div className="min-w-0 flex-1 overflow-auto">
-
           <ColumnDnd onMove={(from, to) => setLayout((l) => ({ ...l, order: moveColumn(l.order, from, to) }))}
             labelOf={(id) => columnDefs[id as ScoutColumn].label}>
             <table {...fixedTable} className={cn('w-full text-[13px]', fixedTable.className)}>
@@ -370,12 +394,13 @@ export function ScoutingPage() {
             <p className="px-5 py-3 text-xs text-muted-foreground">{t.scouting.more(result.total - result.rows.length)}</p>
           )}
         </div>
-        <aside className="w-[26rem] shrink-0 overflow-y-auto border-l border-border bg-card/40">
-          {selected
-            ? <PlayerDetail player={selectedPlayer!} roles={bestRoles} owner={clubName(db, selected.owner)} onCompare={setComparing}
+        <DetailPane open={!!selected} onClose={() => setSelected(null)} closeLabel={t.common.close}>
+          {selected && selectedPlayer && (
+            <PlayerDetail player={selectedPlayer} roles={bestRoles} owner={clubName(db, selected.owner)} onCompare={setComparing}
+              extra={<ScoutStats db={db} player={selected} />}
               actions={<ShortlistStar on={shortlist.keys.has(scoutKey(selected))} onToggle={() => shortlist.toggle(scoutKey(selected))} />} />
-            : <EmptyState message={t.scouting.selectHint} />}
-        </aside>
+          )}
+        </DetailPane>
       </div>
       {comparing && <CompareDialog first={comparing} source="club" onClose={() => setComparing(null)} />}
     </div>

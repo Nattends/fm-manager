@@ -5,7 +5,6 @@ import type { Lang } from './languages'
 
 export interface I18n {
   lang: Lang
-  setLang(lang: Lang): void
   t: Messages
   /** Nom affiché d'un rôle : traduit pour un profil par défaut, sinon le nom saisi. */
   roleName(role: RoleDefinition): string
@@ -15,7 +14,7 @@ export interface I18n {
 }
 
 /**
- * Contexte isolé dans son propre module : modifier en.ts / fr.ts ne recharge que le Provider
+ * Contexte isolé dans son propre module : modifier en.ts ne recharge que le Provider
  * (provider.tsx) sans recréer le contexte, sinon le rechargement à chaud plantait
  * (« useI18n must be used inside <I18nProvider> »).
  */

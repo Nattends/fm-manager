@@ -391,12 +391,28 @@ pub struct SeasonStats {
   /// Buts et passes décisives attendus ×100.
   pub xg: u16,
   pub xa: u16,
+  pub fouls: u16,
+  pub fouled: u16,
+  /// Duels aériens disputés et gagnés.
+  pub aerials: u16,
+  pub aerials_won: u16,
+  pub offsides: u16,
+  pub crosses: u16,
+  pub crosses_done: u16,
+  /// Gardiens : arrêts et buts encaissés.
+  pub saves: u8,
+  pub conceded: u8,
 }
 
 /// Emplacement de stats `01 07` puis, après ces deux octets : somme des notes×10 u16, minutes u16, titularisations,
 /// entrées, matchs notés, buts, passes D (u8), homme du match (+12), puis des u16 : passes tentées (+25) et réussies (+27),
 /// tacles tentés (+29) et gagnés (+31), dribbles (+37), tirs (+43) et cadrés (+45), xG×100 (+89), xA×100 (+91).
 /// Établi sur 21 joueurs d'une capture du jeu ; Σ xG = Σ buts à 0,3 % près sur toute la base.
+///
+/// Sans capture de référence, par profil par poste et équilibres sur toute la base : fautes commises (+39) et subies (+41)
+/// (sommes égales à 0,1 % près), duels aériens disputés (+33) et gagnés (+35) (défenseurs centraux 65 %, attaquants 32 %),
+/// hors-jeu (+47, attaquants), centres tentés (+129) et réussis (+131) (ailiers, latéraux), et pour les gardiens (u8)
+/// buts encaissés (+9) et arrêts (+61) (Σ arrêts ≈ Σ tirs cadrés − Σ buts).
 const SLOT_LEN: usize = 155;
 
 fn read_slot(d: &[u8], s: usize) -> SeasonStats {
@@ -419,6 +435,15 @@ fn read_slot(d: &[u8], s: usize) -> SeasonStats {
     shots_on_target: u16_at(d, b + 45),
     xg: u16_at(d, b + 89),
     xa: u16_at(d, b + 91),
+    fouls: u16_at(d, b + 39),
+    fouled: u16_at(d, b + 41),
+    aerials: u16_at(d, b + 33),
+    aerials_won: u16_at(d, b + 35),
+    offsides: u16_at(d, b + 47),
+    crosses: u16_at(d, b + 129),
+    crosses_done: u16_at(d, b + 131),
+    saves: d[b + 61],
+    conceded: d[b + 9],
   }
 }
 
@@ -728,13 +753,14 @@ impl ParsedSave {
 
   /// Base de scouting : tous les joueurs, en binaire compact (décodé par src/domain/scouting.ts).
   ///
-  /// `FMS5`, horodatage u64 (ms), chemin [u16 + texte], date du jeu (jour u16, année u16, 0 si inconnue),
+  /// `FMS6`, horodatage u64 (ms), chemin [u16 + texte], date du jeu (jour u16, année u16, 0 si inconnue),
   /// clubs [u32 n] × (nation u16, nom [u16 + texte]), joueurs [u32 n] × (15 postes, 54 valeurs, naissance jour/année u16,
   /// nation u16, club u32, club propriétaire u32 (FFFFFFFF si aucun), fin de contrat jour/année u16, salaire hebdomadaire u32 (£),
   /// valeur u32 (£, FFFFFFFF si inconnue), somme des notes×10 de la saison u16, matchs notés u8,
   /// stats de la saison : minutes u16, titularisations, entrées, buts, passes D, homme du match (u8), passes tentées,
-  /// réussies, tacles tentés, gagnés, dribbles, tirs, cadrés, xG×100, xA×100 (u16), nom [u8 + texte]).
-  /// `FMS4` : sans les stats ; `FMS3` : sans les notes non plus ; `FMS2` : sans la valeur non plus.
+  /// réussies, tacles tentés, gagnés, dribbles, tirs, cadrés, xG×100, xA×100 (u16), fautes commises, subies, duels aériens,
+  /// gagnés, hors-jeu, centres, réussis (u16), arrêts, buts encaissés (u8), nom [u8 + texte]).
+  /// `FMS5` : sans les stats après xA ; `FMS4` : sans les stats ; `FMS3` : sans les notes non plus ; `FMS2` : sans la valeur non plus.
   pub fn scouting_snapshot(&self, path: &str, refreshed_at: u64) -> Vec<u8> {
     fn text16(out: &mut Vec<u8>, s: &str) {
       let b = &s.as_bytes()[..s.len().min(u16::MAX as usize)];
@@ -743,7 +769,7 @@ impl ParsedSave {
     }
     let owner = self.team_owner();
     let mut out = Vec::with_capacity(self.players.len() * 136 + self.clubs.len() * 24);
-    out.extend_from_slice(b"FMS5");
+    out.extend_from_slice(b"FMS6");
     out.extend_from_slice(&refreshed_at.to_le_bytes());
     text16(&mut out, path);
     let date = self.game_date.unwrap_or(GameDate { day: 0, year: 0 });
@@ -784,6 +810,11 @@ impl ParsedSave {
       for v in [s.passes, s.passes_done, s.tackles, s.tackles_won, s.dribbles, s.shots, s.shots_on_target, s.xg, s.xa] {
         out.extend_from_slice(&v.to_le_bytes());
       }
+      // FMS6
+      for v in [s.fouls, s.fouled, s.aerials, s.aerials_won, s.offsides, s.crosses, s.crosses_done] {
+        out.extend_from_slice(&v.to_le_bytes());
+      }
+      out.extend_from_slice(&[s.saves, s.conceded]);
       let name = &p.name.as_bytes()[..p.name.len().min(255)];
       out.push(name.len() as u8);
       out.extend_from_slice(name);

@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "FM27 Manager",
-  "version": "0.24.0",
+  "version": "0.25.0",
   "identifier": "com.fm27.manager",
   "build": {
     "frontendDist": "../dist",
@@ -16,12 +16,10 @@
         "title": "FM27 Manager",
         "width": 1500,
         "height": 950,
-        "minWidth": 1500,
-        "minHeight": 950,
-        "maxWidth": 1500,
-        "maxHeight": 1300,
+        "minWidth": 760,
+        "minHeight": 560,
         "resizable": true,
-        "maximizable": false,
+        "maximizable": true,
         "center": true,
         "fullscreen": false,
         "dragDropEnabled": false

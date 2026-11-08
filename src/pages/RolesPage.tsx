@@ -114,7 +114,7 @@ export function RolesPage() {
         <p className="max-w-xl text-xs text-muted-foreground">{t.roles.hint}</p>
       </PageHeader>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[300px_minmax(0,1fr)]">
+      <div className="grid min-h-0 flex-1 grid-cols-[240px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)]">
         <aside className="flex min-h-0 flex-col border-r border-border">
           <div className="space-y-2 border-b border-border p-3">
             <div className="relative">
@@ -196,7 +196,7 @@ export function RolesPage() {
                 <span key={w} className={cn('inline-flex h-6 items-center rounded-md border px-2', weightStyle(w))}>{t.roles.legend[w]}</span>
               ))}
             </div>
-            <div className="grid grid-cols-4 gap-6">
+            <div className="grid grid-cols-2 gap-6 xl:grid-cols-4">
               {ATTRIBUTE_GROUP_IDS.map((g) => (
                 <div key={g}>
                   <SectionTitle>{t.attributeGroups[g]}</SectionTitle>

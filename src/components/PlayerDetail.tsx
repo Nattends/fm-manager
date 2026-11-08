@@ -15,13 +15,15 @@ import { useValueFormat } from '@/lib/useValueFormat'
 import { useI18n } from '@/i18n'
 
 /** Fiche d'un joueur hors de l'effectif (base de scouting, équipes de jeunes) : infos, meilleurs rôles, terrain et attributs. */
-export function PlayerDetail({ player: p, roles, owner, actions, onCompare }: {
+export function PlayerDetail({ player: p, roles, owner, actions, extra, onCompare }: {
   player: Player
   roles: RoleDefinition[]
   /** Club propriétaire d'un joueur prêté. */
   owner?: string
   /** Boutons supplémentaires à côté de « Comparer ». */
   actions?: ReactNode
+  /** Bloc affiché entre les meilleurs rôles et les attributs (stats de la saison, par exemple). */
+  extra?: ReactNode
   onCompare: (p: Player) => void
 }) {
   const { t, lang, roleName } = useI18n()
@@ -65,6 +67,7 @@ export function PlayerDetail({ player: p, roles, owner, actions, onCompare }: {
         </div>
         <PositionPitch positions={p.positions} />
       </div>
+      {extra}
       <div className="grid grid-cols-2 gap-x-5 gap-y-4">
         {ATTRIBUTE_GROUP_IDS.map((g) => (
           <div key={g}>

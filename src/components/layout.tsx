@@ -1,3 +1,4 @@
+import { XIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
@@ -10,7 +11,7 @@ export function PageHeader({ title, count, children, actions, className }: {
   className?: string
 }) {
   return (
-    <header className={cn('flex min-h-14 shrink-0 flex-wrap items-center gap-3 border-b border-border px-5 py-2.5', className)}>
+    <header className={cn('flex min-h-14 shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-3 py-2.5 lg:px-5', className)}>
       <h1 className="mr-2 flex items-baseline gap-2 text-lg font-semibold tracking-tight text-slate-100">
         {title}
         {count !== undefined && <span className="text-sm font-normal text-muted-foreground">{count}</span>}
@@ -61,6 +62,36 @@ export function StatTile({ label, value, title, valueClassName, className }: {
 /** Libellé de section dans un formulaire ou une fiche. */
 export function SectionTitle({ children, className }: { children: ReactNode; className?: string }) {
   return <h3 className={cn('mb-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase', className)}>{children}</h3>
+}
+
+/**
+ * Fiche à droite d'une liste, affichée seulement quand `open` (un joueur choisi), avec un bouton de fermeture.
+ * Fenêtre large : colonne fixe (plus étroite entre lg et xl). Fenêtre étroite (moins de 1024 px) : panneau par-dessus la liste.
+ * Le parent doit être `relative`.
+ */
+export function DetailPane({ open, onClose, closeLabel, closeButton = true, children }: {
+  open: boolean
+  onClose: () => void
+  closeLabel: string
+  /** false quand le contenu a déjà son propre bouton de fermeture. */
+  closeButton?: boolean
+  children: ReactNode
+}) {
+  if (!open) return null
+  return (
+    <aside className={cn(
+      'shrink-0 overflow-y-auto border-l border-border bg-card/40 lg:w-[22rem] xl:w-[26rem]',
+      'max-lg:absolute max-lg:inset-y-0 max-lg:right-0 max-lg:z-20 max-lg:w-[min(26rem,100%)] max-lg:bg-card max-lg:shadow-2xl',
+    )}>
+      {closeButton && <div className="sticky top-0 z-10 flex justify-end p-1.5 pb-0">
+        <button onClick={onClose} title={closeLabel} aria-label={closeLabel}
+          className="rounded-md bg-card/90 p-1.5 text-muted-foreground hover:bg-secondary hover:text-slate-200">
+          <XIcon className="size-4" />
+        </button>
+      </div>}
+      {children}
+    </aside>
+  )
 }
 
 export function EmptyState({ message, action }: { message: string; action?: ReactNode }) {

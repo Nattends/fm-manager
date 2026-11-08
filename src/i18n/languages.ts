@@ -1,6 +1,2 @@
-export type Lang = 'en' | 'fr'
-
-export const LANGUAGES: { id: Lang; label: string }[] = [
-  { id: 'en', label: 'English' },
-  { id: 'fr', label: 'Français' },
-]
+/** Langue de l'interface : anglais uniquement (le français a été retiré). */
+export type Lang = 'en'

@@ -3,6 +3,7 @@ import { clearEleven, computeLineup } from './lineup'
 import { normalizeText } from './photoMatch'
 import type { Position } from './positions'
 import { bestScores, scoutKey, scoutScorer, type ScoutDb, type ScoutPlayer } from './scouting'
+import { seasonStat } from './seasonStats'
 import type { Player, RoleDefinition, TacticSlot } from './types'
 
 /**
@@ -10,7 +11,7 @@ import type { Player, RoleDefinition, TacticSlot } from './types'
  * Quatre critères, tous exprimés en points de note (même échelle que les notes de rôle) pour pouvoir les additionner :
  * - gain : hausse de la note du titulaire (et, en partie, du remplaçant) au meilleur poste de la tactique ;
  * - surplus : note du joueur moins la note habituelle d'un joueur du même coût, de la même ligne et du même âge ;
- * - rendement : production sur le terrain (xG, xA, tirs, dribbles, tacles, passes, note par 90 minutes) au-dessus ou
+ * - rendement : production sur le terrain (xG, xA, tirs, dribbles, tacles, passes, duels aériens, centres, arrêts, note…) au-dessus ou
  *   en dessous de celle attendue d'après ses attributs et le niveau de son club, convertie en points de note ;
  * - contrat : surplus gagné grâce à une indemnité réduite (libre, fin de contrat proche).
  * Tous les coefficients sont dans `MoneyballParams` (réglables dans Settings) ; les valeurs par défaut sont ci-dessous.
@@ -161,23 +162,32 @@ export function fitCurve(points: { x: number; y: number }[], binSize: number): C
 export type OutputGroup = 'gk' | 'cb' | 'fb' | 'dm' | 'mid' | 'att'
 export const OUTPUT_GROUPS: OutputGroup[] = ['gk', 'cb', 'fb', 'dm', 'mid', 'att']
 
-export type OutputStat = 'xg' | 'goals' | 'xa' | 'shotsOnTarget' | 'dribbles' | 'tacklesWon' | 'passes' | 'passPct' | 'rating'
-export const OUTPUT_STATS: OutputStat[] = ['xg', 'goals', 'xa', 'shotsOnTarget', 'dribbles', 'tacklesWon', 'passes', 'passPct', 'rating']
+export type OutputStat =
+  | 'xg' | 'goals' | 'xa' | 'shotsOnTarget' | 'dribbles' | 'tacklesWon' | 'passes' | 'passPct'
+  | 'aerialsWon' | 'aerialPct' | 'crossPct' | 'savePct' | 'conceded' | 'rating'
+export const OUTPUT_STATS: OutputStat[] = [
+  'xg', 'goals', 'xa', 'shotsOnTarget', 'dribbles', 'tacklesWon', 'passes', 'passPct',
+  'aerialsWon', 'aerialPct', 'crossPct', 'savePct', 'conceded', 'rating',
+]
+/** Pourcentages (affichés en %), et stats où moins = mieux (comptées en négatif dans l'indice). */
+export const OUTPUT_PCT_STATS: OutputStat[] = ['passPct', 'aerialPct', 'crossPct', 'savePct']
+export const OUTPUT_LOWER_BETTER: OutputStat[] = ['conceded']
 
 export type OutputWeights = Record<OutputGroup, Partial<Record<OutputStat, number>>>
 
 /**
  * Poids des stats dans l'indice de chaque ligne : ce qui fait un bon attaquant n'est pas ce qui fait un bon défenseur.
- * Les xG pèsent plus que les buts (la finition varie beaucoup d'une saison à l'autre). Les gardiens n'ont que la note
- * et les passes : arrêts et buts encaissés ne sont pas décodés.
+ * Les xG pèsent plus que les buts (la finition varie beaucoup d'une saison à l'autre). Les duels aériens comptent
+ * surtout pour les défenseurs centraux ; les gardiens sont jugés sur le % d'arrêts et les buts encaissés (qui dépendent
+ * aussi de la défense : le niveau du club, dans la régression, en corrige une partie).
  */
 export const OUTPUT_WEIGHTS: OutputWeights = {
-  att: { xg: 2, goals: 1, xa: 1, shotsOnTarget: 0.5, dribbles: 0.5, rating: 1 },
+  att: { xg: 2, goals: 1, xa: 1, shotsOnTarget: 0.5, dribbles: 0.5, aerialsWon: 0.25, rating: 1 },
   mid: { xa: 1.5, xg: 0.75, passes: 0.75, passPct: 0.5, tacklesWon: 0.75, dribbles: 0.5, rating: 1 },
-  dm: { tacklesWon: 1.25, passes: 0.75, passPct: 0.75, xa: 0.5, xg: 0.25, rating: 1 },
-  fb: { tacklesWon: 0.75, xa: 1, dribbles: 0.5, passPct: 0.5, passes: 0.25, rating: 1.5 },
-  cb: { tacklesWon: 1, passPct: 0.75, passes: 0.5, xg: 0.25, rating: 1.5 },
-  gk: { passPct: 0.5, rating: 2 },
+  dm: { tacklesWon: 1.25, passes: 0.75, passPct: 0.75, xa: 0.5, xg: 0.25, aerialPct: 0.25, rating: 1 },
+  fb: { tacklesWon: 0.75, xa: 1, dribbles: 0.5, passPct: 0.5, passes: 0.25, crossPct: 0.25, rating: 1.5 },
+  cb: { tacklesWon: 1, aerialsWon: 0.5, aerialPct: 0.75, passPct: 0.75, passes: 0.5, xg: 0.25, rating: 1.5 },
+  gk: { savePct: 2, conceded: 0.75, passPct: 0.5, rating: 1.5 },
 }
 
 export interface MoneyballWeights {
@@ -459,6 +469,12 @@ export function statValue(p: Pick<ScoutPlayer, 'stats' | 'avgRating'>, stat: Out
   switch (stat) {
     case 'goals': return per90(s.goals)
     case 'passPct': return s.passes >= 20 ? (s.passesDone / s.passes) * 100 : null
+    // stats étendues (base FMS6), mêmes règles que la fiche Scouting
+    case 'aerialsWon': return seasonStat(p, 'aerialsWon90')
+    case 'aerialPct': return seasonStat(p, 'aerialWinPct')
+    case 'crossPct': return seasonStat(p, 'crossPct')
+    case 'savePct': return seasonStat(p, 'savePct')
+    case 'conceded': return seasonStat(p, 'conceded90')
     default:
       // stats détaillées absentes (ligue sans suivi) : ni passes ni tirs
       if (!s.passes && !s.shots) return null
@@ -486,7 +502,8 @@ export function outputIndex(
     const v = statValue(p, stat)
     const n = norms.get(stat)
     if (v === null || !n || !n.sd || !w) continue
-    sum += (w * (v - n.mean)) / n.sd
+    const sign = OUTPUT_LOWER_BETTER.includes(stat) ? -1 : 1
+    sum += (sign * w * (v - n.mean)) / n.sd
     weight += w
   }
   return weight ? sum / weight : null
