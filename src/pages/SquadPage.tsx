@@ -26,6 +26,7 @@ import { moveColumn } from '@/domain/columnLayout'
 import { nationalityLabel } from '@/domain/nationalities'
 import { POSITIONS, type Position } from '@/domain/positions'
 import { bestRole, type BestRole } from '@/domain/rating'
+import { matchesSearch } from '@/domain/search'
 import type { Player, PlayerStatus } from '@/domain/types'
 import { loadColumnOrder, saveColumnOrder } from '@/lib/columnPrefs'
 import { useI18n } from '@/i18n'
@@ -118,11 +119,10 @@ export function SquadPage() {
   }
 
   const rows = useMemo<Row[]>(() => {
-    const q = search.trim().toLowerCase()
     const max = Number(ageMax)
     return players
       .filter((p) => view === 'all' || p.onLoan === (view === 'loaned'))
-      .filter((p) => !q || [p.name, nationalityLabel(p.nationality, lang), p.club].some((s) => s.toLowerCase().includes(q)))
+      .filter((p) => matchesSearch(search, p.name, nationalityLabel(p.nationality, lang), p.club))
       .filter((p) => position === ALL || (p.positions[position] ?? 0) >= PLAYS_AT)
       .filter((p) => status === ALL || p.status === status)
       .filter((p) => !ageMax || p.age <= max)

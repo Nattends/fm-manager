@@ -13,6 +13,7 @@ import { ATTRIBUTE_GROUP_IDS, attributesOf, type AttributeKey } from '@/domain/a
 import { FM_ROLE_PREFIX } from '@/domain/fmRoles'
 import { POSITIONS, type Position } from '@/domain/positions'
 import { nextWeight } from '@/domain/rating'
+import { matchesSearch } from '@/domain/search'
 import type { RoleDefinition } from '@/domain/types'
 import { useI18n } from '@/i18n'
 import { useStore } from '@/store'
@@ -96,10 +97,9 @@ export function RolesPage() {
     location.reload()
   }
 
-  const q = search.trim().toLowerCase()
   const visible = draft
     .filter((r) => filter === ALL || r.positions.includes(filter))
-    .filter((r) => !q || roleName(r).toLowerCase().includes(q))
+    .filter((r) => matchesSearch(search, roleName(r)))
 
   return (
     <div className="flex h-full flex-col">

@@ -22,6 +22,7 @@ import { compareAttributes, compareRoles, countBetter, searchByName, type Side }
 import { POSITIONS } from '@/domain/positions'
 import { bestRole, rateRole } from '@/domain/rating'
 import { scoutAsPlayer, scoutToday, type ScoutDb } from '@/domain/scouting'
+import { matchesSearch } from '@/domain/search'
 import type { Player, RoleDefinition } from '@/domain/types'
 import { useI18n } from '@/i18n'
 import { useStore } from '@/store'
@@ -244,9 +245,8 @@ export function CompareDialog({ first, source, onClose }: {
   const byKey = new Map(attributeRows.map((r) => [r.key, r]))
   const better = countBetter(attributeRows)
   const inRole = role ? countBetter(attributeRows.filter((r) => role.weights[r.key])) : null
-  const q = roleSearch.trim().toLowerCase()
   const roleRows = useMemo(() => (b ? compareRoles(a, b, roles, playedOnly) : []), [a, b, roles, playedOnly])
-    .filter((r) => !q || roleName(r.role).toLowerCase().includes(q))
+    .filter((r) => matchesSearch(roleSearch, roleName(r.role)))
   const ratingA = role ? rateRole(a, role) : null
   const ratingB = role && b ? rateRole(b, role) : null
 

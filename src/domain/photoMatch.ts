@@ -16,12 +16,18 @@ export interface PhotoCandidate {
 export const AGE_GAP_MIN = -1
 export const AGE_GAP_MAX = 10
 
+/** Lettres que NFD ne décompose pas (Ødegaard, Lewandowski avec ł, Đoković…). */
+const SPECIAL_LETTERS: Record<string, string> = {
+  ø: 'o', ł: 'l', đ: 'd', ð: 'd', þ: 'th', æ: 'ae', œ: 'oe', ß: 'ss', ı: 'i', ħ: 'h',
+}
+
 /** Minuscules, sans accents ni ponctuation, espaces simples. */
 export function normalizeText(s: string): string {
   return s
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '')
     .toLowerCase()
+    .replace(/[øłđðþæœßıħ]/g, (c) => SPECIAL_LETTERS[c])
     .replace(/[^a-z0-9]+/g, ' ')
     .trim()
 }

@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { cn } from '@/lib/utils'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { commandFilter } from '@/domain/search'
 import type { RoleDefinition } from '@/domain/types'
 import { useI18n } from '@/i18n'
 
@@ -25,7 +26,7 @@ export function RoleSelect({ roles, value, onChange, className }: {
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-72 p-0" align="start">
-        <Command>
+        <Command filter={commandFilter}>
           <CommandInput placeholder={t.roles.search} />
           <CommandList className="max-h-80">
             <CommandEmpty>–</CommandEmpty>

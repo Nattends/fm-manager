@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { nationCode, nationalityLabel, sortedNations } from '@/domain/nationalities'
+import { commandFilter } from '@/domain/search'
 import { useI18n } from '@/i18n'
 
 /** Drapeau d'une nation (code ISO en minuscules, ex. « fr », « gb-eng »). */
@@ -48,7 +49,7 @@ export function NationalityPicker({ value, onChange, placeholder, className }: {
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-72 p-0" align="start">
-        <Command>
+        <Command filter={commandFilter}>
           <CommandInput placeholder={t.player.searchNationality} />
           <CommandList className="max-h-80">
             <CommandEmpty>{t.player.noNationality}</CommandEmpty>

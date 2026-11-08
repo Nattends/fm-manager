@@ -21,6 +21,7 @@ import { attrColor } from '@/components/styles'
 import { attributesOf, FIRST_SET_PIECE, type AttributeGroup } from '@/domain/attributes'
 import { POSITIONS } from '@/domain/positions'
 import { allRoleRatings, bestRole } from '@/domain/rating'
+import { matchesSearch } from '@/domain/search'
 import { useI18n } from '@/i18n'
 import { useStore } from '@/store'
 import { CompareDialog } from './CompareDialog'
@@ -40,10 +41,9 @@ export function PlayerSheet({ playerId, onClose }: { playerId: number; onClose: 
   const isGk = player.positions.GK !== undefined
   const groups: AttributeGroup[] = isGk ? ['goalkeeping', 'technical', 'mental', 'physical'] : ['technical', 'mental', 'physical']
   const hasAttrs = Object.keys(player.attributes).length > 0
-  const q = roleSearch.trim().toLowerCase()
   const ratings = allRoleRatings(player, roles)
     .filter((r) => !playedOnly || r.playsPosition)
-    .filter((r) => !q || roleName(r.role).toLowerCase().includes(q))
+    .filter((r) => matchesSearch(roleSearch, roleName(r.role)))
 
   const remove = async () => {
     if (!(await askConfirm(t.player.deleteConfirm(player.name)))) return

@@ -7,6 +7,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import type { Position } from '@/domain/positions'
 import { rateRole, type RoleRating } from '@/domain/rating'
+import { commandFilter } from '@/domain/search'
 import type { Phase, Player, RoleDefinition } from '@/domain/types'
 import { RatingBadge } from '@/components/ui'
 import { useI18n } from '@/i18n'
@@ -99,7 +100,7 @@ export function RolePicker({ roles, value, current, position, phase, player, onC
           <Input className="h-7 flex-1 text-xs" value={abbrevs[current.id] ?? ''} placeholder={roleInitials(fullName)}
             onChange={(e) => setRoleAbbrev(current.id, e.target.value)} />
         </div>
-        <Command>
+        <Command filter={commandFilter}>
           <CommandInput placeholder={t.tactic.searchRole} />
           <CommandList className="max-h-80">
             <CommandEmpty>{t.tactic.noRole}</CommandEmpty>
