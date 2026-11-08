@@ -223,8 +223,12 @@ function Diff({ value, className }: { value: number; className?: string }) {
 }
 
 /** Comparaison de deux joueurs : attributs côte à côte et notes par rôle. */
-export function CompareDialog({ first, source, onClose }: {
+export function CompareDialog({ first, second, role: initialRole, source, onClose }: {
   first: Player
+  /** Second joueur déjà choisi (sinon à choisir). */
+  second?: Player | null
+  /** Rôle comparé d'abord (sinon la meilleure note du premier joueur). */
+  role?: RoleDefinition | null
   /** Source proposée d'abord pour choisir l'autre joueur. */
   source: CompareSource
   onClose: () => void
@@ -234,8 +238,8 @@ export function CompareDialog({ first, source, onClose }: {
   // meilleure note : rôles avec ballon et rôles perso (comme le scouting)
   const bestRoles = useMemo(() => roles.filter((r) => r.phase !== 'oop'), [roles])
   const [a, setA] = useState(first)
-  const [b, setB] = useState<Player | null>(null)
-  const [role, setRole] = useState<RoleDefinition | null>(() => bestRole(first, bestRoles)?.role ?? null)
+  const [b, setB] = useState<Player | null>(second ?? null)
+  const [role, setRole] = useState<RoleDefinition | null>(() => initialRole ?? bestRole(first, bestRoles)?.role ?? null)
   const [roleSearch, setRoleSearch] = useState('')
   const [playedOnly, setPlayedOnly] = useState(true)
 

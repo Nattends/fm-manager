@@ -22,16 +22,19 @@ import { attributesOf, FIRST_SET_PIECE, type AttributeGroup } from '@/domain/att
 import { POSITIONS } from '@/domain/positions'
 import { allRoleRatings, bestRole } from '@/domain/rating'
 import { matchesSearch } from '@/domain/search'
+import type { Player, RoleDefinition } from '@/domain/types'
 import { useI18n } from '@/i18n'
 import { useStore } from '@/store'
 import { CompareDialog } from './CompareDialog'
 import { PlayerForm } from './PlayerForm'
+import { ReplacementsTab } from './ReplacementsTab'
 
 export function PlayerSheet({ playerId, onClose }: { playerId: number; onClose: () => void }) {
   const { players, roles, deletePlayer, resetPhoto } = useStore()
   const { t, roleName, money, date } = useI18n()
   const [editing, setEditing] = useState(false)
-  const [comparing, setComparing] = useState(false)
+  // comparaison ouverte : avec un joueur et un rôle déjà choisis (onglet Remplaçants) ou à choisir
+  const [comparing, setComparing] = useState<{ with: Player | null; role: RoleDefinition | null } | null>(null)
   const [roleSearch, setRoleSearch] = useState('')
   const [playedOnly, setPlayedOnly] = useState(true)
   const player = players.find((p) => p.id === playerId)
@@ -52,7 +55,9 @@ export function PlayerSheet({ playerId, onClose }: { playerId: number; onClose: 
   }
 
   if (editing) return <PlayerForm player={player} onClose={() => setEditing(false)} />
-  if (comparing) return <CompareDialog first={player} source="database" onClose={() => setComparing(false)} />
+  if (comparing) {
+    return <CompareDialog first={player} second={comparing.with} role={comparing.role} source="database" onClose={() => setComparing(null)} />
+  }
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -136,6 +141,7 @@ export function PlayerSheet({ playerId, onClose }: { playerId: number; onClose: 
           <TabsList variant="line" className="w-full justify-start border-b border-border px-5">
             <TabsTrigger value="attributes" className="flex-none px-3">{t.player.tabAttributes}</TabsTrigger>
             <TabsTrigger value="roles" className="flex-none px-3">{t.player.tabRoles}</TabsTrigger>
+            <TabsTrigger value="replacements" className="flex-none px-3">{t.player.tabReplacements}</TabsTrigger>
             <TabsTrigger value="contract" className="flex-none px-3">{t.player.tabContract}</TabsTrigger>
           </TabsList>
 
@@ -203,6 +209,10 @@ export function PlayerSheet({ playerId, onClose }: { playerId: number; onClose: 
             </div>
           </TabsContent>
 
+          <TabsContent value="replacements" className="flex min-h-0 flex-col">
+            <ReplacementsTab player={player} onCompare={(other, role) => setComparing({ with: other, role })} />
+          </TabsContent>
+
           <TabsContent value="contract" className="min-h-0 overflow-y-auto p-5">
             <dl className="grid grid-cols-3 gap-x-6 gap-y-4">
               <Info label={t.player.contractEnd}>{date(player.contractEnd)}</Info>
@@ -231,7 +241,7 @@ export function PlayerSheet({ playerId, onClose }: { playerId: number; onClose: 
           <Button variant="destructive" onClick={remove}><Trash2Icon />{t.common.delete}</Button>
           <div className="flex gap-2">
             <Button variant="ghost" onClick={onClose}>{t.common.close}</Button>
-            <Button variant="outline" onClick={() => setComparing(true)}><ArrowLeftRightIcon />{t.compare.action}</Button>
+            <Button variant="outline" onClick={() => setComparing({ with: null, role: null })}><ArrowLeftRightIcon />{t.compare.action}</Button>
             <Button onClick={() => setEditing(true)}><PencilIcon />{t.common.edit}</Button>
           </div>
         </div>
