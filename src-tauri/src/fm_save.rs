@@ -237,23 +237,36 @@ fn is_marker(d: &[u8], q: usize) -> bool {
   d[q] == 0 && d[q + 1] == 0 && d[q + 2] == 0 && d[q + 3] == 3 && d[q + 4] == 1 && d[q + 6..q + 13].iter().all(|&v| v == 0)
 }
 
-/// Repère qui suit le nom et la date de naissance : `00 00 00 03 01 <nation> 00×7`.
-/// Au-delà de `MARKER_NEAR`, la recherche s'arrête au bloc joueur suivant : ce repère serait le sien.
-fn next_marker(d: &[u8], from: usize) -> Option<usize> {
+/// Repère qui suit le nom et la date de naissance : `00 00 00 03 01 <nation> 00×7`, avec sa fiche d'identité
+/// (position du nom légal, voir `legal_name`).
+/// Le même motif apparaît parfois ailleurs (Kubo : faux repère à 1,2 Ko, vrai à 6,1 Ko) : un repère sans nom légal
+/// devant est ignoré. Au-delà de `MARKER_NEAR`, ou après un faux repère, la recherche s'arrête au bloc joueur
+/// suivant : ce repère serait le sien.
+fn next_marker(d: &[u8], from: usize) -> Option<(usize, usize)> {
   let limit = d.len().saturating_sub(16);
   let near = (from + MARKER_NEAR).min(limit);
-  if let Some(q) = (from..near).find(|&q| is_marker(d, q)) {
-    return Some(q);
-  }
+  let mut rejected = false;
   for q in from..(from + MARKER_FAR).min(limit) {
-    if is_block(d, q) {
+    if (q >= near || rejected) && is_block(d, q) {
       return None;
     }
-    if q >= near && is_marker(d, q) {
-      return Some(q);
+    if is_marker(d, q) {
+      match legal_name(d, q) {
+        Some(lp) => return Some((q, lp)),
+        None => rejected = true,
+      }
     }
   }
   None
+}
+
+/// Position du nom légal avant le repère `m` :
+/// `[prénom u32][0][nom u32][0][nom d'usage u32][0][longueur u32][nom légal][jour u16][année u16][5 octets] repère`.
+fn legal_name(d: &[u8], m: usize) -> Option<usize> {
+  (0..=120usize).map(|k| (k, m.wrapping_sub(13 + k))).find_map(|(k, lp)| {
+    (lp >= 16 && lp < d.len() && u32_at(d, lp) as usize == k && d[lp - 1] == 0 && d[lp - 6] == 0 && d[lp - 11] == 0)
+      .then_some(lp)
+  })
 }
 
 /// Contrats : `01 00 6C 07 ?? [u32][équipe u32] 00×4 [salaire u32] 01 0B 00`, fin de contrat 38 octets avant.
@@ -282,17 +295,11 @@ fn parse_players(d: &[u8], names: &[Vec<String>]) -> Vec<RawPlayer> {
       p += 1;
       continue;
     }
-    let Some(m) = next_marker(d, p + 69) else {
+    let Some((m, lp)) = next_marker(d, p + 69) else {
       p += 1;
       continue;
     };
-    // [prénom u32][0][nom u32][0][nom d'usage u32][0][longueur u32][nom légal][jour u16][année u16][5 octets] repère
-    let legal = (0..=120usize).find(|&k| {
-      let lp = m.wrapping_sub(13 + k);
-      lp >= 16 && u32_at(d, lp) as usize == k && d[lp - 1] == 0 && d[lp - 6] == 0 && d[lp - 11] == 0
-    });
-    if let Some(k) = legal {
-      let lp = m - 13 - k;
+    {
       let first = name_of(0, u32_at(d, lp - 15)).unwrap_or_default();
       let last = name_of(1, u32_at(d, lp - 10)).unwrap_or_default();
       let common = u32_at(d, lp - 5);
@@ -887,6 +894,10 @@ mod tests {
     let s = save.summary();
     println!("{:?} manager {} club {:?} date {:?}", t.elapsed(), s.manager, s.managed_club_id, s.game_date);
     println!("joueurs {} clubs {}", s.total_players, s.clubs.len());
+    // un faux repère ferait lire deux fois la même fiche d'identité
+    let mut seen = std::collections::HashSet::new();
+    let dup = save.players.iter().filter(|p| !seen.insert(p.marker)).count();
+    println!("fiches lues deux fois {dup}");
     let players = save.club_players(s.managed_club_id.unwrap()).unwrap();
     if let Ok(out) = std::env::var("FM_SAVE_OUT") {
       std::fs::write(out, serde_json::to_string(&players).unwrap()).unwrap();
