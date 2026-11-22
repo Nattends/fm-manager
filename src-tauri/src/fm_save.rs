@@ -20,6 +20,13 @@ pub struct GameDate {
   pub year: u16,
 }
 
+impl GameDate {
+  /// Clé de tri chronologique.
+  fn key(self) -> (u16, u16) {
+    (self.year, self.day)
+  }
+}
+
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveClub {
@@ -88,9 +95,43 @@ struct RawPlayer {
   contracts: Vec<Contract>,
 }
 
-/// Contrat d'un joueur avec une équipe.
+impl RawPlayer {
+  /// Contrat avec le club propriétaire : celui qui finit le plus tard (un prêt finit au plus tard avec le contrat
+  /// d'origine), à égalité le plus ancien, puis le premier (les équipes B et C ont un contrat « miroir » identique).
+  fn owner_contract(&self) -> Option<&Contract> {
+    let rank = |c: &Contract| (c.end.map(GameDate::key), std::cmp::Reverse(c.start.key()));
+    // `max_by_key` garde le dernier des ex æquo : on parcourt à l'envers pour garder le premier
+    self.contracts.iter().rev().max_by_key(|c| rank(c))
+  }
+
+  /// En prêt : joue hors de l'équipe de son contrat principal, et le contrat avec l'équipe qui l'accueille (s'il est lu)
+  /// a été signé après (un joueur d'une équipe affiliée a un contrat miroir, signé le même jour).
+  fn loan_owner(&self) -> Option<&Contract> {
+    let owner = self.owner_contract().filter(|c| self.team != NONE && c.team != self.team)?;
+    self.contracts.iter().filter(|c| c.team == self.team).all(|c| c.start.key() > owner.start.key()).then_some(owner)
+  }
+
+  /// Prêté par le club dont `first` est l'équipe A, à une équipe d'un autre club.
+  fn loaned_by(&self, first: u32, club_teams: &[u32]) -> bool {
+    !club_teams.contains(&self.team) && self.loan_owner().is_some_and(|c| c.team == first)
+  }
+
+  /// Contrat en cours avec l'équipe `team` : le premier à finir parmi ceux qui ne sont pas échus (un contrat déjà
+  /// signé pour la saison suivante finit plus tard).
+  fn contract_with(&self, team: u32, today: Option<GameDate>) -> Option<&Contract> {
+    let live = |c: &&Contract| match (c.end, today) {
+      (Some(e), Some(t)) => e.key() >= t.key(),
+      _ => true,
+    };
+    let with = || self.contracts.iter().filter(|c| c.team == team);
+    with().filter(live).min_by_key(|c| c.end.map_or((u16::MAX, 0), GameDate::key)).or_else(|| with().next())
+  }
+}
+
+/// Contrat signé d'un joueur avec une équipe.
 struct Contract {
   team: u32,
+  start: GameDate,
   end: Option<GameDate>,
   /// Salaire hebdomadaire en livres sterling.
   wage: u32,
@@ -233,11 +274,12 @@ fn is_block(d: &[u8], p: usize) -> bool {
 const MARKER_NEAR: usize = 4_000;
 const MARKER_FAR: usize = 16_000;
 
+/// Le 2ᵉ octet est un drapeau de 0 à 6 (Ada Arık : 2 ; ~8 % des fiches d'une partie avancée), au-delà c'est du bruit.
 fn is_marker(d: &[u8], q: usize) -> bool {
-  d[q] == 0 && d[q + 1] == 0 && d[q + 2] == 0 && d[q + 3] == 3 && d[q + 4] == 1 && d[q + 6..q + 13].iter().all(|&v| v == 0)
+  d[q] == 0 && d[q + 1] <= 6 && d[q + 2] == 0 && d[q + 3] == 3 && d[q + 4] == 1 && d[q + 6..q + 13].iter().all(|&v| v == 0)
 }
 
-/// Repère qui suit le nom et la date de naissance : `00 00 00 03 01 <nation> 00×7`, avec sa fiche d'identité
+/// Repère qui suit le nom et la date de naissance : `00 <drapeau> 00 03 01 <nation> 00×7`, avec sa fiche d'identité
 /// (position du nom légal, voir `legal_name`).
 /// Le même motif apparaît parfois ailleurs (Kubo : faux repère à 1,2 Ko, vrai à 6,1 Ko) : un repère sans nom légal
 /// devant est ignoré. Au-delà de `MARKER_NEAR`, ou après un faux repère, la recherche s'arrête au bloc joueur
@@ -269,18 +311,49 @@ fn legal_name(d: &[u8], m: usize) -> Option<usize> {
   })
 }
 
-/// Contrats : `01 00 6C 07 ?? [u32][équipe u32] 00×4 [salaire u32] 01 0B 00`, fin de contrat 38 octets avant.
-fn contracts_between(d: &[u8], from: usize, to: usize) -> Vec<Contract> {
+/// Entrée de 29 octets glissée entre l'en-tête d'un contrat et sa fin : `07 [u32][u32][u32][date][date][u32][u32]`
+/// (apparaît en cours de partie, des dizaines par joueur en 2029).
+fn is_contract_entry(d: &[u8], e: usize) -> bool {
+  e + 29 <= d.len() && d[e] == 7 && d[e + 16] == 7 && d[e + 20] == 7
+}
+
+/// Début de l'en-tête du contrat qui finit par l'ancre `q` : `FF×8 [fin][début][? ? ? drapeaux] 00×7`, puis les
+/// entrées de 29 octets (`is_contract_entry`), puis `00 [date][u32] 00 ??×10` et l'ancre. Sans entrée, la fin est à q − 38.
+fn contract_header(d: &[u8], q: usize) -> usize {
+  let mut e = q - 49;
+  while e >= 29 && is_contract_entry(d, e) {
+    e -= 29;
+  }
+  e + 29 - 18
+}
+
+/// Contrats : `[date, en général vide 01 00 6C 07] ?? [joueur + 1 u32][équipe u32] 00×4 [salaire u32] 01 ?? 00`.
+/// L'avant-dernier octet vaut `0B` pour les contrats de la base de départ, `00` pour ceux signés en cours de partie
+/// (et les prêts) : l'identifiant du joueur (+ 1, comme les fiches de stats) sert alors de garde-fou.
+/// Fin et début de contrat dans l'en-tête (`contract_header`) ; sans date de début, c'est une offre non signée
+/// (Ada Arık : Trabzonspor), ignorée.
+fn contracts_between(d: &[u8], from: usize, to: usize, player: u32) -> Vec<Contract> {
   let mut out = Vec::new();
   let to = to.min(d.len().saturating_sub(24));
-  for q in from.max(40)..to {
-    if d[q..q + 4] == EMPTY_DATE
+  for q in from.max(64)..to {
+    // la date en tête est vide, sauf après une prolongation (Héctor Fort : 2029) : l'identifiant du joueur suffit alors
+    let dated = match player {
+      NONE => d[q..q + 4] == EMPTY_DATE,
+      id => d[q + 3] == 7 && u32_at(d, q + 5) == id.wrapping_add(1),
+    };
+    if dated
       && d[q + 13..q + 17] == [0, 0, 0, 0]
-      && d[q + 21..q + 24] == [1, 11, 0]
+      && d[q + 21] == 1
+      && matches!(d[q + 22], 0 | 11)
+      && d[q + 23] == 0
     {
-      let end = date_at(d, q - 38);
+      let h = contract_header(d, q);
+      if d[h + 4..h + 8] == EMPTY_DATE {
+        continue;
+      }
+      let end = date_at(d, h);
       let end = (end.year > 1900 && end.day >= 1 && end.day <= 366).then_some(end);
-      out.push(Contract { team: u32_at(d, q + 9), end, wage: u32_at(d, q + 17) });
+      out.push(Contract { team: u32_at(d, q + 9), start: date_at(d, h + 4), end, wage: u32_at(d, q + 17) });
     }
   }
   out
@@ -329,7 +402,7 @@ fn parse_players(d: &[u8], names: &[Vec<String>]) -> Vec<RawPlayer> {
   for i in 0..found.len() {
     let from = found[i].block + 69;
     let to = found.get(i + 1).map_or(found[i].marker + 4000, |n| n.block);
-    found[i].contracts = contracts_between(d, from, to);
+    found[i].contracts = contracts_between(d, from, to, found[i].id);
   }
   found
 }
@@ -689,11 +762,8 @@ impl ParsedSave {
     let host_name = |team: u32| owner.get(&team).map(|&i| self.clubs[i].short_name.clone()).unwrap_or_default();
     let mut out = Vec::new();
     for p in &self.players {
-      // contrat le plus précis (le dernier) : un joueur de l'équipe B a aussi un contrat avec le club
-      let last_contract = p.contracts.last().map(|c| c.team);
       let in_squad = p.team == first;
-      let loaned_out =
-        !in_squad && p.team != NONE && last_contract == Some(first) && !club.teams.contains(&p.team);
+      let loaned_out = !in_squad && p.loaned_by(first, &club.teams);
       if !in_squad && !loaned_out {
         continue;
       }
@@ -704,7 +774,8 @@ impl ParsedSave {
   }
 
   fn save_player(&self, p: &RawPlayer, contract_team: u32, on_loan: bool, host_club: String) -> SavePlayer {
-    let contract = p.contracts.iter().find(|c| c.team == contract_team).or(p.contracts.first());
+    // joueur prêté au club : son contrat de prêt (fin du prêt, part du salaire payée)
+    let contract = p.contract_with(contract_team, self.game_date).or_else(|| p.owner_contract());
     let (avg_rating, rated_matches) = self.season_rating(p);
     SavePlayer {
       name: p.name.clone(),
@@ -728,7 +799,8 @@ impl ParsedSave {
   ///
   /// - les équipes du club après la première (`teams[1..]`) sont les équipes de jeunes, dans l'ordre du jeu ;
   /// - une équipe d'un autre club est affiliée (B, C…) quand au moins `MIN_AFFILIATE` joueurs y jouent avec
-  ///   le club comme premier contrat et l'équipe comme dernier : un joueur prêté garde l'équipe A en dernier contrat.
+  ///   l'équipe A comme contrat principal et un contrat miroir avec l'équipe (même date de signature) : un joueur
+  ///   prêté a signé son contrat avec l'équipe qui l'accueille plus tard (`loaned_by`).
   ///   Elles sont classées par identifiant d'équipe.
   pub fn club_youth(&self, club_id: u32) -> Result<Vec<YouthPlayer>, String> {
     const MIN_AFFILIATE: usize = 5;
@@ -738,8 +810,9 @@ impl ParsedSave {
     for p in &self.players {
       let affiliated = p.team != NONE
         && !club.teams.contains(&p.team)
-        && p.contracts.first().map(|c| c.team) == Some(first)
-        && p.contracts.last().map(|c| c.team) == Some(p.team);
+        && p.owner_contract().is_some_and(|c| c.team == first)
+        && p.contracts.iter().any(|c| c.team == p.team)
+        && !p.loaned_by(first, &club.teams);
       if affiliated {
         *counts.entry(p.team).or_default() += 1;
       }
@@ -798,9 +871,10 @@ impl ParsedSave {
       let club = index(p.team);
       out.extend_from_slice(&club.to_le_bytes());
       // club propriétaire, s'il est différent (joueur prêté) : celui du dernier contrat
-      let owned_by = p.contracts.last().map_or(NONE, |c| index(c.team));
+      let owned_by = p.loan_owner().map_or(NONE, |c| index(c.team));
       out.extend_from_slice(&(if owned_by == club { NONE } else { owned_by }).to_le_bytes());
-      let contract = p.contracts.iter().find(|c| index(c.team) == club && club != NONE).or(p.contracts.first());
+      // contrat avec le club propriétaire (salaire complet, vraie fin de contrat)
+      let contract = p.owner_contract();
       let end = contract.and_then(|c| c.end).unwrap_or(GameDate { day: 0, year: 0 });
       out.extend_from_slice(&end.day.to_le_bytes());
       out.extend_from_slice(&end.year.to_le_bytes());
@@ -1001,5 +1075,135 @@ mod tests {
     d.extend_from_slice(&[0; 40]);
     assert!(is_block(&d, 8));
     assert!(!is_block(&d, 9));
+  }
+
+  fn date(year: u16, day: u16) -> GameDate {
+    GameDate { day, year }
+  }
+
+  fn push_date(d: &mut Vec<u8>, g: Option<GameDate>) {
+    match g {
+      Some(g) => {
+        d.extend_from_slice(&g.day.to_le_bytes());
+        d.extend_from_slice(&g.year.to_le_bytes());
+      }
+      None => d.extend_from_slice(&EMPTY_DATE),
+    }
+  }
+
+  /// Contrat : en-tête `FF×8 [fin][début][4 octets] 00×6`, `entries` entrées de 29 octets, `00 [date][u32] 00×11`,
+  /// puis l'ancre `[date][?][joueur + 1][équipe] 00×4 [salaire] 01 ?? 00`.
+  fn contract_record(d: &mut Vec<u8>, player: u32, team: u32, start: Option<GameDate>, end: GameDate, entries: usize, renewed: bool) {
+    d.extend_from_slice(&[0; 16]);
+    d.extend_from_slice(&[0xff; 8]);
+    push_date(d, Some(end));
+    push_date(d, start);
+    d.extend_from_slice(&[3, 0, 3, 0, 0, 0, 0, 0, 0, 0]);
+    for _ in 0..entries {
+      let mut e = [0u8; 29];
+      e[0] = 7;
+      e[13..17].copy_from_slice(&[0xf2, 0, 0xed, 7]);
+      e[17..21].copy_from_slice(&[0xf2, 0x48, 0xed, 7]);
+      d.extend_from_slice(&e);
+    }
+    d.push(0);
+    push_date(d, Some(date(2026, 194)));
+    d.extend_from_slice(&[0; 15]);
+    push_date(d, renewed.then(|| date(2029, 185)));
+    d.push(0);
+    d.extend_from_slice(&(player + 1).to_le_bytes());
+    d.extend_from_slice(&team.to_le_bytes());
+    d.extend_from_slice(&[0; 4]);
+    d.extend_from_slice(&(1000 + team).to_le_bytes());
+    d.extend_from_slice(&[1, 0, 0]);
+  }
+
+  #[test]
+  fn reads_contracts_with_entries() {
+    let mut d = vec![0u8; 64];
+    contract_record(&mut d, 42, 1415, Some(date(2024, 182)), date(2031, 181), 0, false);
+    // partie avancée : entrées glissées entre l'en-tête et la fin de l'enregistrement
+    contract_record(&mut d, 42, 1416, Some(date(2022, 200)), date(2032, 182), 3, false);
+    // offre non signée (sans date de début), contrat d'un autre joueur, contrat prolongé (date en tête)
+    contract_record(&mut d, 42, 1515, None, date(2032, 182), 0, false);
+    contract_record(&mut d, 43, 1600, Some(date(2024, 182)), date(2030, 181), 0, false);
+    contract_record(&mut d, 42, 1700, Some(date(2026, 194)), date(2031, 181), 1, true);
+    d.extend_from_slice(&[0; 32]);
+    let c = contracts_between(&d, 0, d.len(), 42);
+    let got: Vec<(u32, GameDate, Option<GameDate>, u32)> = c.iter().map(|c| (c.team, c.start, c.end, c.wage)).collect();
+    assert_eq!(
+      got,
+      [
+        (1415, date(2024, 182), Some(date(2031, 181)), 2415),
+        (1416, date(2022, 200), Some(date(2032, 182)), 2416),
+        (1700, date(2026, 194), Some(date(2031, 181)), 2700),
+      ]
+    );
+  }
+
+  fn player_with(team: u32, contracts: Vec<Contract>) -> RawPlayer {
+    RawPlayer {
+      id: 1,
+      block: 0,
+      marker: 0,
+      name: String::new(),
+      first_name: String::new(),
+      last_name: String::new(),
+      birth: date(2005, 1),
+      nation: 0,
+      positions: Vec::new(),
+      values: Vec::new(),
+      value: None,
+      team,
+      contracts,
+    }
+  }
+
+  fn signed(team: u32, start: GameDate, end: GameDate) -> Contract {
+    Contract { team, start, end: Some(end), wage: team }
+  }
+
+  /// Prêt : contrat avec l'équipe d'accueil signé après le contrat d'origine ; équipe affiliée : contrat miroir.
+  #[test]
+  fn tells_loans_from_affiliates() {
+    let club = [10, 11];
+    let loaned = player_with(90, vec![signed(10, date(2024, 182), date(2030, 181)), signed(90, date(2026, 194), date(2027, 181))]);
+    assert!(loaned.loaned_by(10, &club));
+    assert_eq!(loaned.owner_contract().map(|c| c.team), Some(10));
+    // prêté sans contrat lu avec l'équipe d'accueil
+    assert!(player_with(90, vec![signed(10, date(2024, 182), date(2030, 181))]).loaned_by(10, &club));
+    let affiliate = player_with(90, vec![signed(10, date(2024, 182), date(2030, 181)), signed(90, date(2024, 182), date(2030, 181))]);
+    assert!(!affiliate.loaned_by(10, &club));
+    assert_eq!(affiliate.owner_contract().map(|c| c.team), Some(10));
+    // joueur prêté au club : le contrat d'origine (ailleurs) finit plus tard
+    let loaned_in = player_with(10, vec![signed(70, date(2023, 182), date(2030, 181)), signed(10, date(2026, 194), date(2027, 181))]);
+    assert!(!loaned_in.loaned_by(10, &club));
+    assert_eq!(loaned_in.loan_owner().map(|c| c.team), Some(70));
+  }
+
+  /// Contrat en cours : le premier à finir parmi ceux qui ne sont pas échus (le suivant est déjà signé).
+  #[test]
+  fn picks_running_contract() {
+    let p = player_with(
+      10,
+      vec![signed(10, date(2020, 182), date(2025, 181)), signed(10, date(2017, 69), date(2031, 181)), signed(10, date(2026, 183), date(2027, 181))],
+    );
+    let today = Some(date(2026, 241));
+    assert_eq!(p.contract_with(10, today).and_then(|c| c.end), Some(date(2027, 181)));
+    assert!(p.contract_with(20, today).is_none());
+  }
+
+  /// Repère de fiche : le 2ᵉ octet est un drapeau de 0 à 6 (Ada Arık : `00 02 00 03 01 ad 00×7`).
+  #[test]
+  fn marker_accepts_flag_byte() {
+    let marker = |flag: u8| {
+      let mut d = vec![0, flag, 0, 3, 1, 0xad];
+      d.extend_from_slice(&[0; 10]);
+      d
+    };
+    assert!(is_marker(&marker(0), 0));
+    assert!(is_marker(&marker(2), 0));
+    assert!(is_marker(&marker(6), 0));
+    assert!(!is_marker(&marker(7), 0));
   }
 }
