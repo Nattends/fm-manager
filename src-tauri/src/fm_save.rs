@@ -274,32 +274,42 @@ fn is_block(d: &[u8], p: usize) -> bool {
 const MARKER_NEAR: usize = 4_000;
 const MARKER_FAR: usize = 16_000;
 
-/// Le 2ᵉ octet est un drapeau de 0 à 6 (Ada Arık : 2 ; ~8 % des fiches d'une partie avancée), au-delà c'est du bruit.
+/// Le 2ᵉ octet est un drapeau de 0 à 6 (Ada Arık : 2 ; ~8 % des fiches d'une partie avancée), le 4ᵉ varie
+/// (Karsten Dewilde : 5, Camille Bodart : 4, Jean-Pascal Labrousse : 2, la plupart : 3).
 fn is_marker(d: &[u8], q: usize) -> bool {
-  d[q] == 0 && d[q + 1] <= 6 && d[q + 2] == 0 && d[q + 3] == 3 && d[q + 4] == 1 && d[q + 6..q + 13].iter().all(|&v| v == 0)
+  d[q] == 0 && d[q + 1] <= 6 && d[q + 2] == 0 && (1..=16).contains(&d[q + 3]) && d[q + 4] == 1 && d[q + 6..q + 13].iter().all(|&v| v == 0)
 }
 
-/// Repère qui suit le nom et la date de naissance : `00 <drapeau> 00 03 01 <nation> 00×7`, avec sa fiche d'identité
+/// Repère qui suit le nom et la date de naissance : `00 <drapeau> 00 <1..16> 01 <nation> 00×7`, avec sa fiche d'identité
 /// (position du nom légal, voir `legal_name`).
 /// Le même motif apparaît parfois ailleurs (Kubo : faux repère à 1,2 Ko, vrai à 6,1 Ko) : un repère sans nom légal
 /// devant est ignoré. Au-delà de `MARKER_NEAR`, ou après un faux repère, la recherche s'arrête au bloc joueur
 /// suivant : ce repère serait le sien.
-fn next_marker(d: &[u8], from: usize) -> Option<(usize, usize)> {
+/// Si deux blocs sont imbriqués, on privilégie le repère qui porte `id + 1` (`has_id_guard`).
+fn next_marker(d: &[u8], from: usize, id: u32) -> Option<(usize, usize)> {
   let limit = d.len().saturating_sub(16);
   let near = (from + MARKER_NEAR).min(limit);
   let mut rejected = false;
+  let mut fallback = None;
   for q in from..(from + MARKER_FAR).min(limit) {
     if (q >= near || rejected) && is_block(d, q) {
-      return None;
+      return fallback;
     }
     if is_marker(d, q) {
       match legal_name(d, q) {
-        Some(lp) => return Some((q, lp)),
+        Some(lp) => {
+          if id == NONE || has_id_guard(d, id, q) {
+            return Some((q, lp));
+          }
+          if fallback.is_none() {
+            fallback = Some((q, lp));
+          }
+        }
         None => rejected = true,
       }
     }
   }
-  None
+  fallback
 }
 
 /// Position du nom légal avant le repère `m` :
@@ -368,7 +378,8 @@ fn parse_players(d: &[u8], names: &[Vec<String>]) -> Vec<RawPlayer> {
       p += 1;
       continue;
     }
-    let Some((m, lp)) = next_marker(d, p + 69) else {
+    let id = if p >= 43 { u32_at(d, p - 43) } else { NONE };
+    let Some((m, lp)) = next_marker(d, p + 69, id) else {
       p += 1;
       continue;
     };
@@ -381,7 +392,7 @@ fn parse_players(d: &[u8], names: &[Vec<String>]) -> Vec<RawPlayer> {
         None => format!("{first} {last}").trim().to_string(),
       };
       found.push(RawPlayer {
-        id: if p >= 43 { u32_at(d, p - 43) } else { NONE },
+        id,
         block: p,
         marker: m,
         name,
@@ -404,7 +415,33 @@ fn parse_players(d: &[u8], names: &[Vec<String>]) -> Vec<RawPlayer> {
     let to = found.get(i + 1).map_or(found[i].marker + 4000, |n| n.block);
     found[i].contracts = contracts_between(d, from, to, found[i].id);
   }
-  found
+  unique_identities(d, found)
+}
+
+/// La fiche d'identité porte l'identifiant du joueur + 1, en général 75 à 400 octets avant le repère.
+const ID_GUARD: usize = 500;
+
+fn has_id_guard(d: &[u8], id: u32, marker: usize) -> bool {
+  let key = id.wrapping_add(1).to_le_bytes();
+  (marker.saturating_sub(ID_GUARD)..marker).any(|q| d[q..q + 4] == key)
+}
+
+/// Une fiche d'identité n'appartient qu'à un bloc. Certains blocs n'ont pas de fiche à la suite :
+/// leur recherche s'arrête sur la fiche d'un bloc suivant. On garde le bloc dont l'identifiant est dans la fiche,
+/// à défaut le dernier (le plus proche) ; les autres sont écartés, faute de nom.
+fn unique_identities(d: &[u8], found: Vec<RawPlayer>) -> Vec<RawPlayer> {
+  let mut owner: HashMap<usize, usize> = HashMap::new();
+  for (i, p) in found.iter().enumerate() {
+    owner
+      .entry(p.marker)
+      .and_modify(|o| {
+        if !has_id_guard(d, found[*o].id, p.marker) || has_id_guard(d, p.id, p.marker) {
+          *o = i;
+        }
+      })
+      .or_insert(i);
+  }
+  found.into_iter().enumerate().filter(|(i, p)| owner[&p.marker] == *i).map(|(_, p)| p).collect()
 }
 
 /// Bloc des 16 dernières notes d'une fiche de stats : `10`, 16 emplacements de 3 octets (vides `00 00 00` en tête,
@@ -1193,17 +1230,65 @@ mod tests {
     assert!(p.contract_with(20, today).is_none());
   }
 
-  /// Repère de fiche : le 2ᵉ octet est un drapeau de 0 à 6 (Ada Arık : `00 02 00 03 01 ad 00×7`).
+  /// Repère de fiche : 2ᵉ octet de 0 à 6 (Ada Arık : 2) et 4ᵉ octet de 1 à 16 (Karsten Dewilde : 5).
   #[test]
   fn marker_accepts_flag_byte() {
-    let marker = |flag: u8| {
-      let mut d = vec![0, flag, 0, 3, 1, 0xad];
+    let marker = |flag: u8, kind: u8| {
+      let mut d = vec![0, flag, 0, kind, 1, 0xad];
       d.extend_from_slice(&[0; 10]);
       d
     };
-    assert!(is_marker(&marker(0), 0));
-    assert!(is_marker(&marker(2), 0));
-    assert!(is_marker(&marker(6), 0));
-    assert!(!is_marker(&marker(7), 0));
+    assert!(is_marker(&marker(0, 3), 0));
+    assert!(is_marker(&marker(2, 5), 0));
+    assert!(is_marker(&marker(6, 16), 0));
+    assert!(!is_marker(&marker(7, 3), 0));
+    assert!(!is_marker(&marker(0, 0), 0));
+    assert!(!is_marker(&marker(0, 17), 0));
+  }
+
+  #[test]
+  fn next_marker_prefers_matching_id_guard() {
+    let mut d = vec![0u8; 2000];
+    let write_identity = |d: &mut [u8], pos: usize, id: u32, kind: u8| {
+      d[pos - 100..pos - 96].copy_from_slice(&(id + 1).to_le_bytes());
+      // nom légal vide (longueur 0) à pos - 13
+      d[pos..pos + 6].copy_from_slice(&[0, 2, 0, kind, 1, 0x83]);
+    };
+    // deux fiches imbriquées : d'abord celle du joueur 10, puis celle du joueur 11
+    write_identity(&mut d, 500, 10, 3);
+    write_identity(&mut d, 900, 11, 5);
+    assert_eq!(next_marker(&d, 100, 11).map(|(m, _)| m), Some(900));
+    assert_eq!(next_marker(&d, 100, 10).map(|(m, _)| m), Some(500));
+    // sans garde correspondante : repli sur le premier repère valide
+    assert_eq!(next_marker(&d, 100, 99).map(|(m, _)| m), Some(500));
+  }
+
+  #[test]
+  fn identity_belongs_to_one_block() {
+    let raw = |id: u32, block: usize, marker: usize| RawPlayer {
+      id,
+      block,
+      marker,
+      name: String::new(),
+      first_name: String::new(),
+      last_name: String::new(),
+      birth: GameDate { day: 1, year: 2000 },
+      nation: 0,
+      positions: Vec::new(),
+      values: Vec::new(),
+      value: None,
+      team: 0,
+      contracts: Vec::new(),
+    };
+    let mut d = vec![0u8; 4000];
+    // fiche à 3000 avec l'identifiant 11 (+ 1) ; fiche à 3500 sans garde
+    d[2900..2904].copy_from_slice(&12u32.to_le_bytes());
+    let ids = |v: Vec<RawPlayer>| v.iter().map(|p| p.id).collect::<Vec<_>>();
+    // bloc sans fiche (10) puis le vrai propriétaire (11) : le premier est écarté
+    assert_eq!(ids(unique_identities(&d, vec![raw(10, 0, 3000), raw(11, 1000, 3000)])), [11]);
+    // le propriétaire passe avant un faux bloc glissé entre lui et sa fiche
+    assert_eq!(ids(unique_identities(&d, vec![raw(11, 0, 3000), raw(12, 2000, 3000)])), [11]);
+    // sans garde : le bloc le plus proche
+    assert_eq!(ids(unique_identities(&d, vec![raw(20, 0, 3500), raw(21, 2000, 3500), raw(22, 3000, 3500)])), [22]);
   }
 }
